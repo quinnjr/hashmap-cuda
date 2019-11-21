@@ -1,0 +1,22 @@
+[package]
+name = "hashmap-cuda"
+version = "0.1.0"
+authors = [
+  "Maia Duschatzky",
+  "Michael McCarthy",
+  "Joseph R. Quinn <quinn.josephr@protonmail.com>"
+]
+edition = "2018"
+links = "cuda"
+homepage = "https://github.com/quinnjr/hashmap-cuda"
+license = "ISC"
+
+[dependencies]
+ahash = "0.2.18"
+# cuda = "0.3.0"
+cuda-sys = "0.2.0"
+failure = "0.1.6"
+
+[features]
+default = ["std"]
+std = []
