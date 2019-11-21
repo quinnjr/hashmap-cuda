@@ -7,16 +7,19 @@ authors = [
   "Joseph R. Quinn <quinn.josephr@protonmail.com>"
 ]
 edition = "2018"
-links = "cuda"
 homepage = "https://github.com/quinnjr/hashmap-cuda"
 license = "ISC"
+exclude = [ "project/" ]
 
 [dependencies]
-ahash = "0.2.18"
-# cuda = "0.3.0"
+ahash = { version = "0.2.18", optional = true }
 cuda-sys = "0.2.0"
 failure = "0.1.6"
 
 [features]
 default = ["std"]
 std = []
+no-std = ["ahash"]
+
+[dev-dependencies]
+rand = "0.7.2"
