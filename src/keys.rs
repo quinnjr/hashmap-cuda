@@ -28,7 +28,7 @@ impl<K: Debug, V>Debug for Keys<'_, K, V> {
 impl<'a, K, V> Iterator for Keys<'a, K, V> {
   type Item = &'a K;
 
-  fn next(&mut self) -> Option<(&'a K)> {
+  fn next(&mut self) -> Option<&'a K> {
     self.inner.next().map(|(k, _)| k)
   }
 
