@@ -1,0 +1,13 @@
+assert_on_constants = "deny"
+blacklisted_name = "deny"
+block_in_if_condition_expr = "deny"
+block_in_if_condition_stmt = "deny"
+bool_comparison = "deny"
+borrowed_box = "deny"
+box_vec = "deny"
+boxed_local = "deny"
+builtin_type_shadow = "deny"
+cast_lossless = "deny"
+cast_sign_loss = "deny"
+clone_on_ref_ptr = "deny"
+# TODO: More lints

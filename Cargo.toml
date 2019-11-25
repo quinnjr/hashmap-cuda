@@ -1,6 +1,7 @@
 [package]
 name = "hashmap-cuda"
 version = "0.1.0"
+description = "A reimplementation of `std::collections::HashMap` using CUDA for parallelization."
 authors = [
   "Maia Duschatzky",
   "Michael McCarthy",
@@ -9,17 +10,52 @@ authors = [
 edition = "2018"
 homepage = "https://github.com/quinnjr/hashmap-cuda"
 license = "ISC"
+keywords = ["hash", "hashmap", "hashbrown", "data", "structure", "cuda", "parallel", "swisstable"]
 exclude = [ "project/" ]
+build = "build.rs"
+
+[package.metadata.docs.rs]
+features = ["nightly"]
 
 [dependencies]
-ahash = { version = "0.2.18", optional = true }
+cfg-if = "0.1.10"
+compiler_builtins = { version = "0.1.2", optional = true }
 cuda-sys = "0.2.0"
 failure = "0.1.6"
 
-[features]
-default = ["std"]
-std = []
-no-std = ["ahash"]
+[dependencies.ahash]
+version = "0.2.18"
+optional = true
+default-features = false
+
+[dependencies.alloc]
+version = "1.0"
+optional = true
+package = "rustc-std-workspace-alloc"
+
+[dependencies.core]
+version = "1.0.0"
+optional = true
+package = "rustc-std-workspace-core"
+
+[dependencies.serde]
+version = "1.0.102"
+optional = true
+features = ["derive"]
 
 [dev-dependencies]
+clippy = "0.0.302"
+lazy_static = "1.4.0"
 rand = "0.7.2"
+rustc-hash = "1.0.1"
+
+[features]
+default = ["std", "ahash", "ahash-compile-time-rng"]
+ahash-compile-time-rng = ["ahash/compile-time-rng"]
+std = []
+nightly = []
+rustc-internal-api = []
+rustc-dep-of-std = ["nightly", "core", "compiler_builtins", "alloc", "rustc-internal-api"]
+
+[build-dependencies]
+autocfg = "0.1.7"
