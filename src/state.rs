@@ -1,7 +1,17 @@
 // Copyright (c) 2019 Maia Duschatzky, Michael McCarthy, and Joseph Quinn.
 // SPDX-License-Identifier: ISC
 
-use crate::default_hasher::DefaultHasher;
+use crate::{
+  hasher::DefaultHasher,
+  raw::sys
+};
+
+use core::cell::Cell;
+#[allow(deprecated)]
+use core::hash::SipHasher;
+use core::hash::BuildHasher;
+
+use core::fmt::{ Debug, Display, Formatter, Result as FmtResult };
 
 /// `RandomState` is the default state for [`HashMap`] types.
 ///

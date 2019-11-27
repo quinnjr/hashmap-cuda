@@ -28,6 +28,8 @@
 //! [2]: https://docs.rs/hashbrown/0.6.3/hashbrown/struct.HashMap.html
 //! [3]: https://docs.rs/hashbrown/0.6.3/hashbrown/struct.HashMap.html
 
+#![no_std]
+
 #![feature(try_reserve, hashmap_internals, todo_macro)]
 
 #![cfg_attr(
@@ -56,39 +58,60 @@
   )
 )]
 
-#![allow(
-  clippy::doc_markdown,
-  clippy::module_name_repitions,
-  clippy::must_use_candidate
-)]
+#![allow(clippy::doc_markdown, clippy::module_name_repitions, clippy::must_use_candidate)]
 
 #![deny(clippy::correctness, clippy::complexity, clippy::perf)]
 
-mod default_hasher;
+#[cfg(any(
+  target_os = "ios",
+  target_os = "android",
+  target_os = "emscripten",
+  target_os = "cloudabi",
+  target_os = "fuchisa",
+  target_os = "haiku",
+  target_os = "redox",
+  target_os = "solaris"
+))]
+compile_error!("CUDA compilation is not supported on this platform.");
+
+use core::{
+  borrow::Borrow,
+  fmt::{ Debug, Display, Formatter, Result as FmtResult },
+  iter::FromIterator,
+  hash::{ BuildHasher, Hash },
+  ops::Index
+};
+
 mod entry;
-mod error;
+mod hasher;
 mod iterator;
 mod keys;
 // mod macro;
-mod random_state;
-mod result;
-mod swiss_table;
+mod state;
+mod raw;
+mod scopeguard;
 mod values;
 
+pub mod error;
+pub mod result;
+
 pub use crate::{
-  default_hasher::*,
   entry::*,
   error::Error,
+  hasher::*,
   iterator::*,
   keys::*,
   // macro::hashmap,
-  random_state::*,
+  state::*,
   result::Result,
-  swiss_table::*,
   values::*
 };
 
-pub mod prelude;
+#[cfg(has_extern_crate_alloc)]
+#[cfg_attr(test, macro_use)]
+extern crate alloc;
+#[cfg(not(has_extern_crate_alloc))]
+extern crate std as alloc;
 
 #[derive(Clone, Debug)]
 pub struct HashMap<K, V, S = RandomState> {
@@ -732,7 +755,7 @@ impl<K, V, S> HashMap<K, V, S> where S: BuildHasher {
   /// so that the map now contains keys which compare equal, search may start
   /// acting erratically, with two keys randomly masking each other. Implementations
   /// are free to assume this doesn't happen (within the limits of memory-safety).
-  pub fn raw_entry_mut(&mut self) -> RawEntryBuilderMut<'_, K, V, S> {
+  pub fn raw_entry_mut(&mut self) -> EntryBuilderMut<'_, K, V, S> {
     todo!()
   }
 
@@ -759,7 +782,7 @@ impl<K, V, S> HashMap<K, V, S> where S: BuildHasher {
 impl<K, V, S> PartialEq for HashMap<K, V, S>
   where K: Eq + Hash, V: PartialEq, S: BuildHasher
 {
-  fn eq(&self, other: &Self<K, V, S>) -> bool {
+  fn eq(&self, other: &Self) -> bool {
     if self.len() != other.len() {
       return false;
     }
@@ -786,7 +809,7 @@ impl<K, V, S> Debug for HashMap<K, V, S>
 }
 
 impl<K, V, S> Default for HashMap<K, V, S>
-  where K: Eq + Hash, S: BuilderHash + Default
+  where K: Eq + Hash, S: BuildHasher + Default
 {
   fn default() -> Self {
     todo!()
@@ -887,73 +910,104 @@ impl<'a, K, V, S> Extend<(&'a K, &'a V)> for HashMap<K, V, S>
   }
 }
 
-//
-// fn map_entry<'a, K: 'a, V: 'a>(raw: base::RustcEntry<'a, K, V>) -> Entry<'a, K, V> {
-//     match raw {
-//         base::RustcEntry::Occupied(base) => Entry::Occupied(OccupiedEntry { base }),
-//         base::RustcEntry::Vacant(base) => Entry::Vacant(VacantEntry { base }),
-//     }
-// }
-//
-//
-// fn map_collection_alloc_err(err: hashbrown::CollectionAllocErr) -> TryReserveError {
-//     match err {
-//         hashbrown::CollectionAllocErr::CapacityOverflow => TryReserveError::CapacityOverflow,
-//         hashbrown::CollectionAllocErr::AllocErr { layout } => TryReserveError::AllocError {
-//             layout,
-//             non_exhaustive: (),
-//         },
-//     }
-// }
-//
-//
-// fn map_raw_entry<'a, K: 'a, V: 'a, S: 'a>(
-//     raw: base::RawEntryMut<'a, K, V, S>,
-// ) -> RawEntryMut<'a, K, V, S> {
-//     match raw {
-//         base::RawEntryMut::Occupied(base) => RawEntryMut::Occupied(RawOccupiedEntryMut { base }),
-//         base::RawEntryMut::Vacant(base) => RawEntryMut::Vacant(RawVacantEntryMut { base }),
-//     }
-// }
-//
-// #[allow(dead_code)]
-// fn assert_covariance() {
-//     fn map_key<'new>(v: HashMap<&'static str, u8>) -> HashMap<&'new str, u8> {
-//         v
-//     }
-//     fn map_val<'new>(v: HashMap<u8, &'static str>) -> HashMap<u8, &'new str> {
-//         v
-//     }
-//     fn iter_key<'a, 'new>(v: Iter<'a, &'static str, u8>) -> Iter<'a, &'new str, u8> {
-//         v
-//     }
-//     fn iter_val<'a, 'new>(v: Iter<'a, u8, &'static str>) -> Iter<'a, u8, &'new str> {
-//         v
-//     }
-//     fn into_iter_key<'new>(v: IntoIter<&'static str, u8>) -> IntoIter<&'new str, u8> {
-//         v
-//     }
-//     fn into_iter_val<'new>(v: IntoIter<u8, &'static str>) -> IntoIter<u8, &'new str> {
-//         v
-//     }
-//     fn keys_key<'a, 'new>(v: Keys<'a, &'static str, u8>) -> Keys<'a, &'new str, u8> {
-//         v
-//     }
-//     fn keys_val<'a, 'new>(v: Keys<'a, u8, &'static str>) -> Keys<'a, u8, &'new str> {
-//         v
-//     }
-//     fn values_key<'a, 'new>(v: Values<'a, &'static str, u8>) -> Values<'a, &'new str, u8> {
-//         v
-//     }
-//     fn values_val<'a, 'new>(v: Values<'a, u8, &'static str>) -> Values<'a, u8, &'new str> {
-//         v
-//     }
-//     fn drain<'new>(
-//         d: Drain<'static, &'static str, &'static str>,
-//     ) -> Drain<'new, &'new str, &'new str> {
-//         d
-//     }
-// }
+
+fn map_entry<'a, K: 'a, V: 'a>(
+  raw: crate::entry::rustc_entry::RustcEntry<'a, K, V>
+) -> Entry<'a, K, V> {
+  todo!()
+    // match raw {
+    //     base::RustcEntry::Occupied(base) => Entry::Occupied(OccupiedEntry { base }),
+    //     base::RustcEntry::Vacant(base) => Entry::Vacant(VacantEntry { base }),
+    // }
+}
+
+
+fn map_collection_alloc_err(
+  err: crate::error::CollectionAllocErr
+) -> Error {
+  use crate::error::CollectionAllocErr::*;
+  use crate::error::TryReserveError;
+  match err {
+    CapacityOverflow => TryReserveError::CapacityOverflow,
+    AllocErr { layout } => TryReserveError::AllocError {
+      layout,
+      non_exhaustive: (),
+    },
+  }
+}
+
+
+fn map_raw_entry<'a, K: 'a, V: 'a, S: 'a>(
+  raw: crate::entry::EntryMut<'a, K, V, S>,
+) -> EntryMut<'a, K, V, S> {
+  todo!()
+    // match raw {
+    //     base::EntryMut::Occupied(base) => EntryMut::Occupied(RawOccupiedEntryMut { base }),
+    //     base::EntryMut::Vacant(base) => EntryMut::Vacant(RawVacantEntryMut { base }),
+    // }
+}
+
+#[allow(dead_code)]
+fn assert_covariance() {
+  fn map_key<'new>(v: HashMap<&'static str, u8>)
+    -> HashMap<&'new str, u8>
+  {
+    v
+  }
+
+  fn map_val<'new>(v: HashMap<u8, &'static str>)
+    -> HashMap<u8, &'new str>
+  {
+    v
+  }
+
+  fn iter_key<'a, 'new>(v: Iter<'a, &'static str, u8>)
+    -> Iter<'a, &'new str, u8>
+  {
+    v
+  }
+
+  fn iter_val<'a, 'new>(v: Iter<'a, u8, &'static str>)
+    -> Iter<'a, u8, &'new str>
+  {
+    v
+  }
+  fn into_iter_key<'new>(v: IntoIter<&'static str, u8>)
+    -> IntoIter<&'new str, u8>
+  {
+    v
+  }
+  fn into_iter_val<'new>(v: IntoIter<u8, &'static str>)
+    -> IntoIter<u8, &'new str>
+  {
+    v
+  }
+  fn keys_key<'a, 'new>(v: Keys<'a, &'static str, u8>)
+    -> Keys<'a, &'new str, u8>
+  {
+    v
+  }
+  fn keys_val<'a, 'new>(v: Keys<'a, u8, &'static str>)
+    -> Keys<'a, u8, &'new str>
+  {
+    v
+  }
+  fn values_key<'a, 'new>(v: Values<'a, &'static str, u8>)
+    -> Values<'a, &'new str, u8>
+  {
+    v
+  }
+  fn values_val<'a, 'new>(v: Values<'a, u8, &'static str>)
+    -> Values<'a, u8, &'new str>
+  {
+    v
+  }
+  fn drain<'new>(
+      d: Drain<'static, &'static str, &'static str>,
+  ) -> Drain<'new, &'new str, &'new str> {
+    d
+  }
+}
 
 #[cfg(test)]
 /// Testing module
@@ -1775,7 +1829,7 @@ mod test {
 
   #[test]
   fn test_raw_entry() {
-    use super::RawEntryMut::{Occupied, Vacant};
+    use super::EntryMut::{Occupied, Vacant};
 
     let xs = [(1i32, 10i32), (2, 20), (3, 30), (4, 40), (5, 50), (6, 60)];
 

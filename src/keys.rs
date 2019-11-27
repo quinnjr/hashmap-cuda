@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: ISC
 
 use core::fmt::{ Debug, Display, Formatter, Result as FmtResult };
+use core::iter::FusedIterator;
 
 use crate::iterator::Iter;
 

@@ -1,8 +1,11 @@
 // Copyright (c) 2019 Maia Duschatzky, Michael McCarthy, and Joseph Quinn.
 // SPDX-License-Identifier: ISC
 
-#[feature(std)]
-use std::hash::SipHasher;
+#[allow(deprecated)]
+use core::hash::{
+  Hasher,
+  SipHasher
+};
 
 /// The default [`Hasher`] used by [`RandomState`].
 ///
@@ -14,7 +17,7 @@ use std::hash::SipHasher;
 /// [`Hasher`]: ../../hash/trait.Hasher.html
 #[allow(deprecated)]
 #[derive(Clone, Debug)]
-pub struct DefaultHasher(SipHasher);
+pub struct DefaultHasher(pub SipHasher);
 
 impl DefaultHasher {
   /// Creates a new `DefaultHasher`.

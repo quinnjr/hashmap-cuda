@@ -1,14 +1,39 @@
 // Copyright (c) 2019 Maia Duschatzky, Michael McCarthy, and Joseph Quinn.
 // SPDX-License-Identifier: ISC
 
-#![feature(try_reserve)]
-
 use failure::Fail;
 
 use core::{
   convert::From,
   fmt::{ Debug, Display, Formatter, Result as FmtResult },
 };
+
+/// The error type for `try_reserve` methods.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TryReserveError {
+  /// Error due to the computed capacity exceeding the collection's maximum
+  /// (usually `isize::MAX` bytes).
+  CapacityOverflow,
+  /// The memory allocator returned an error
+  AllocError {
+    /// The layout of allocation request that failed
+    layout: ::core::alloc::Layout,
+    non_exhaustive: (),
+  }
+}
+
+/// Augments `AllocErr` with a `CapacityOverflow` variant.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CollectionAllocErr {
+  /// Error due to the computed capacity exceeding the collection's maximum
+  /// (usually `isize::MAX` bytes).
+  CapacityOverflow,
+  /// Error due to the allocator.
+  AllocErr {
+    /// The layout of the allocation request that failed.
+    layout: ::core::alloc::Layout,
+  }
+}
 
 macro_rules! error_enumeration {
   (
@@ -36,13 +61,14 @@ macro_rules! error_enumeration {
 
 error_enumeration! {
   AllocLayout => ::core::alloc::LayoutErr,
-  #[feature(std)] BoxedError => ::std::boxed::Box<dyn ::std::error::Error>,
+  // #[feature(std)] BoxedError => ::std::boxed::Box<dyn ::std::error::Error>,
   CellBorrow => ::core::cell::BorrowError,
   Fail => failure::Error,
   Format => ::core::fmt::Error,
   ParseInt => ::core::num::ParseIntError,
   ParseFloat => ::core::num::ParseFloatError,
-  #[feature(std)] StringError => ::std::string::String,
+  // #[feature(std)] StringError => ::std::string::String,
   TryFromInt => ::core::num::TryFromIntError,
-  TryReserve => ::core::alloc::TryReserveError
+  TryReserve => self::TryReserveError,
+  CollectionAlloc => self::CollectionAllocErr
 }

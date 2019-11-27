@@ -1,9 +1,12 @@
 // Copyright (c) 2019 Maia Duschatzky, Michael McCarthy, and Joseph Quinn.
 // SPDX-License-Identifier: ISC
 
-use std::fmt::{ Debug, Formatter, Result as StdResult };
-
 use crate::iterator::{ Iter, IterMut };
+
+use core::{
+  fmt::{ Debug, Formatter, Result as FmtResult },
+  iter::FusedIterator
+};
 
 /// An iterator over the values of a `HashMap`.
 ///
@@ -39,7 +42,7 @@ pub struct ValuesMut<'a, K: 'a, V: 'a> {
 impl<'a, K, V> Iterator for Values<'a, K, V> {
   type Item = &'a V;
 
-  fn next(&mut self) -> Option<(&'a V)> {
+  fn next(&mut self) -> Option<&'a V> {
     self.inner.next().map(|(_, v)| v)
   }
 
@@ -59,7 +62,7 @@ impl<K, V> FusedIterator for Values<'_, K, V> {}
 impl<'a, K, V> Iterator for ValuesMut<'a, K, V> {
   type Item = &'a mut V;
 
-  fn next(&mut self) -> Option<(&'a mut V)> {
+  fn next(&mut self) -> Option<&'a mut V> {
     self.inner.next().map(|(_, v)| v)
   }
 

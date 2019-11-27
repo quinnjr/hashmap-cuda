@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: ISC
 
 use core::fmt::{ Debug, Display, Formatter, Result as FmtResult };
+use core::iter::FusedIterator;
 
 /// An iterator over the entries of a `HashMap`.
 ///
@@ -14,7 +15,7 @@ use core::fmt::{ Debug, Display, Formatter, Result as FmtResult };
 /// See Also: #26925 (Added `#[derive(Clone)]` instead of `Clone` impl)
 #[derive(Clone)]
 pub struct Iter<'a, K: 'a, V: 'a> {
-  // base: base::Iter<'a, K, V>,
+  // // base: base::Iter<'a, K, V>,
 }
 
 impl<K: Debug, V: Debug> Debug for Iter<'_, K, V> {
@@ -31,7 +32,7 @@ impl<K: Debug, V: Debug> Debug for Iter<'_, K, V> {
 /// [`iter_mut`]: struct.HashMap.html#method.iter_mut
 /// [`HashMap`]: struct.HashMap.html
 pub struct IterMut<'a, K: 'a, V: 'a> {
-  // base: base::IterMut<'a, K, V>
+  // // base: base::IterMut<'a, K, V>
 }
 
 impl<'a, K, V> IterMut<'a, K, V> {
@@ -50,7 +51,7 @@ impl<'a, K, V> IterMut<'a, K, V> {
 /// [`into_iter`]: struct.HashMap.html#method.into_iter
 /// [`HashMap`]: struct.HashMap.html
 pub struct IntoIter<K, V> {
-  // base: base::IntoIter<K, V>,
+  // // base: base::IntoIter<K, V>,
 }
 
 impl<K, V> IntoIter<K, V> {
@@ -68,7 +69,7 @@ impl<K, V> IntoIter<K, V> {
 /// [`drain`]: struct.HashMap.html#method.drain
 /// [`HashMap`]: struct.HashMap.html
 pub struct Drain<'a, K: 'a, V: 'a> {
-  // base: base::Drain<'a, K, V>,
+  // // base: base::Drain<'a, K, V>,
 }
 
 impl<'a, K, V> Drain<'a, K, V> {
