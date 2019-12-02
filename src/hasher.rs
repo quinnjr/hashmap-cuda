@@ -7,6 +7,12 @@ use core::hash::{
   SipHasher
 };
 
+#[cfg(feature = "ahash")]
+pub type DefaultHashBuilder = ahash::ABuildHasher;
+
+#[cfg(not(feature = "ahash"))]
+pub enum DefaultHashBuilder {}
+
 /// The default [`Hasher`] used by [`RandomState`].
 ///
 /// The internal algorithm is not specified, and so it and

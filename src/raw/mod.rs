@@ -21,10 +21,11 @@ pub(crate) mod bitmask;
 pub(crate) mod cuda;
 pub(crate) mod sys;
 
-use self::bitmask::*;
+use self::bitmask::BitMask;
 // Drop-in replacement of `generic` and `sse2` implementations
 // using CUDA.
 use self::cuda as imp;
+use self::imp::Group;
 
 cfg_if::cfg_if! {
   if #[cfg(feature = "nightly")] {

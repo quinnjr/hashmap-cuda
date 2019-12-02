@@ -13,6 +13,8 @@ use core::hash::BuildHasher;
 
 use core::fmt::{ Debug, Display, Formatter, Result as FmtResult };
 
+use cuda::{ self, rand };
+
 /// `RandomState` is the default state for [`HashMap`] types.
 ///
 /// A particular instance `RandomState` will create the
@@ -52,15 +54,35 @@ impl RandomState {
   #[allow(deprecated)]
   #[feature(std)] //TODO: CUDA rng?
   pub fn new() -> Self {
-    thread_local!(static KEYS: Cell<(u64, u64)> = {
-      Cell::new(sys::hashmap_random_keys())
-    });
+    // thread_local!(static KEYS: Cell<(u64, u64)> = {
+    //   Cell::new(sys::hashmap_random_keys())
+    // });
+    // Ensure CUDA initialization
+    if !cuda::driver::cuda_initialized().ok() {
+      cuda::driver::cuda_init().unwrap();
+    };
 
-    KEYS.with(|keys| {
-      let (k0, k1) = keys.get();
-      keys.set((k0.wrapping_add(1), k1));
-      Self { k0: k0, k1: k1 }
-    })
+    let mut keys: (u64, u64);
+    let generator = rand::CurandGenerator::<rand::CurandDefaultRng>::create();
+
+    generator.gen_u64(*keys.0, 1).unwrap();
+    generator.gen_u64(*keys.1, 1).unwrap();
+
+    // static KEYS: (u64, u64) = {
+    //   let generator = rand::CurandGenerator<rand::>::create();
+    //   let mut k1, k2: u64;
+    //   generator.gen_u64(*k1, 1).unwrap();
+    //   generator.gen_u64(*k2, 1).unwrap();
+    //
+    //   (k1, k2)
+    // };
+    Self { k0: keys.0, k1: keys.1 }
+
+    // KEYS.with(|keys| {
+    //   let (k0, k1) = keys.get();
+    //   keys.set((k0.wrapping_add(1), k1));
+    //   Self { k0: k0, k1: k1 }
+    // })
   }
 }
 

@@ -16,15 +16,15 @@ at [Florida International University's Department of Computing and
 Information Science](https://www.cis.fiu.edu/) for their CDA-4101
 Structured Computer Organization final project.
 
-`hashmap-cuda` is released under the permissive ISC license.
-
-See: [LICENSE](./LICENSE)
+`hashmap-cuda` is released under the permissive [ISC license](./LICENSE).
 
 ## Differences with `std::collections::HashMap` and `hashbrown::HashMap`
   1. Direct dependence on CUDA for use. `hashmap-cuda` does not fall back on `std::collections::HashMap` or `hashbrown::HashMap` if CUDA is not available.
-  2. More `#[inline]` use instead of the `more-inline` feature with the understanding that good performance out of `#[inline]` use is desirable when utilizing CUDA as well for its performance benefits during runtime.
-  3. Less abstraction above raw FFI bindings than `std::collections`.
+  2. Due to time constraints, implementation of [`SwissTable`][4] in the library is minimal and could be improved on.
+  3. More `#[inline]` use instead of the `more-inline` feature with the understanding that good performance out of `#[inline]` use is desirable when utilizing CUDA as well for its performance benefits during runtime.
+  4. Less abstraction above raw bindings than `std::collections`.
 
 [1]: https://doc.rust-lang.org/src/std/collections/hash/map.rs.html
 [2]: https://docs.rs/hashbrown/0.6.3/hashbrown/struct.HashMap.html
 [3]: https://docs.rs/hashbrown/0.6.3/hashbrown/struct.HashMap.html
+[4]: https://abseil.io/blog/20180927-swisstables

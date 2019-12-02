@@ -57,23 +57,23 @@ impl BitMask {
     }
   }
 
-    /// Returns the first set bit in the `BitMask`,
-    /// if there is one. The bitmask must not be empty.
-    #[inline]
-    #[cfg(feature = "nightly")]
-    pub unsafe fn lowest_set_bit_nonzero(self) -> usize {
-      intrinsics::cttz_nonzero(self.0) as usize / BITMASK_STRIDE
-    }
+  /// Returns the first set bit in the `BitMask`,
+  /// if there is one. The bitmask must not be empty.
+  #[inline]
+  #[cfg(feature = "nightly")]
+  pub unsafe fn lowest_set_bit_nonzero(self) -> usize {
+    intrinsics::cttz_nonzero(self.0) as usize / BITMASK_STRIDE
+  }
 
-    #[inline]
-    #[cfg(not(feature = "nightly"))]
-    pub unsafe fn lowest_set_bit_nonzero(self) -> usize {
-      self.trailing_zeros()
-    }
+  #[inline]
+  #[cfg(not(feature = "nightly"))]
+  pub unsafe fn lowest_set_bit_nonzero(self) -> usize {
+    self.trailing_zeros()
+  }
 
-    /// Returns the number of trailing zeroes in the `BitMask`.
-    #[inline]
-    pub fn trailing_zeros(self) -> usize {
+  /// Returns the number of trailing zeroes in the `BitMask`.
+  #[inline]
+  pub fn trailing_zeros(self) -> usize {
     // ARM doesn't have a trailing_zeroes instruction,
     // and instead uses reverse_bits (RBIT) + leading_zeroes (CLZ).
     // However older ARM versions (pre-ARMv7) don't have RBIT

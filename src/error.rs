@@ -61,14 +61,18 @@ macro_rules! error_enumeration {
 
 error_enumeration! {
   AllocLayout => ::core::alloc::LayoutErr,
-  // #[feature(std)] BoxedError => ::std::boxed::Box<dyn ::std::error::Error>,
+  // #[cfg(feature = "std")] BoxedError => ::std::boxed::Box<dyn ::std::error::Error>,
   CellBorrow => ::core::cell::BorrowError,
   Fail => failure::Error,
   Format => ::core::fmt::Error,
   ParseInt => ::core::num::ParseIntError,
   ParseFloat => ::core::num::ParseFloatError,
-  // #[feature(std)] StringError => ::std::string::String,
+  // #[cfg(feature = "std")] StringError => ::std::string::String,
   TryFromInt => ::core::num::TryFromIntError,
   TryReserve => self::TryReserveError,
-  CollectionAlloc => self::CollectionAllocErr
+  CollectionAlloc => self::CollectionAllocErr,
+  CurandError => cuda::rand::CurandError,
+  CuError => cuda::driver::CuError,
+  CudaRuntimeError => cuda::runtime::CudaError
+
 }

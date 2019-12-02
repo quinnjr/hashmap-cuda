@@ -72,7 +72,7 @@
   target_os = "redox",
   target_os = "solaris"
 ))]
-compile_error!("CUDA compilation is not supported on this platform.");
+compile_error!("CUDA compilation is not known to be supported on this platform.");
 
 use core::{
   borrow::Borrow,
@@ -113,12 +113,33 @@ extern crate alloc;
 #[cfg(not(has_extern_crate_alloc))]
 extern crate std as alloc;
 
-#[derive(Clone, Debug)]
-pub struct HashMap<K, V, S = RandomState> {
-  capacity: usize
+use cuda::{ driver, runtime };
+
+/// Pre-construction sanity check for the CUDA runtime environment
+/// and initialization of the CUDA driver.
+///
+/// # Panics
+///
+/// If no valid runtime can be found, the `HashMap` will panic.
+#[inline]
+fn preflight() -> Result<()> {
+  if !driver::cuda_initialized().unwrap_or(false) {
+    let num_dev_count = runtime::CudaDevice::count();
+    match num_dev_count {
+      Ok(ct) => assert!(ct > 0),
+      Err(_) => Err(failure::err_msg("Could not detect valid CUDA device"))
+    };
+    driver::cuda_init()?;
+  };
 }
 
-impl<K: Hash + Eq, V> HashMap<K, V, RandomState> {
+#[derive(Clone)]
+pub struct HashMap<K, V, S = DefaultHashBuilder> {
+  pub(crate) hash_builder: S,
+  pub(crate) table: Table<(K, V)>
+}
+
+impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// Creates an empty `Hashmap`.
   ///
   /// # Examples
@@ -127,8 +148,15 @@ impl<K: Hash + Eq, V> HashMap<K, V, RandomState> {
   /// use hashmap-cuda::HashMap;
   /// let mut map: HashMap<&str, i64> = HashMap::new();
   /// ```
+  ///
+  /// # Panics
+  ///
+  /// If no valid runtime can be found, an early panic exits the application.
   pub fn new() -> Self {
-    Self::default()
+    match preflight() {
+      Ok(_) => Self::default(),
+      Err(err) => panic!(err)
+    }
   }
 
   /// Creates an empty `Hashmap` with a specified initial capacity.
@@ -139,16 +167,19 @@ impl<K: Hash + Eq, V> HashMap<K, V, RandomState> {
   /// use hashmap-cuda::HashMap;
   /// let mut map: HashMap<&str, i64> = HashMap::with_capacity(100);
   /// ```
+  ///
+  /// # Panics
+  ///
+  /// If no valid runtime can be found, an early panic exits the application.
   pub fn with_capacity(capacity: usize) -> Self {
-    Self {
-      capacity: capacity
+    match preflight() {
+      Ok(_) => todo!(),
+      Err(err) => panic!(err)
     }
   }
-}
 
-impl <K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
-  /// Creates an empty `HashMap` which will use the given hash builder to hash
-  /// keys.
+  /// Creates an empty `HashMap` which will use the given hash
+  /// builder to hash keys.
   ///
   /// The created map has the default initial capacity.
   ///
@@ -160,15 +191,20 @@ impl <K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// # Examples
   ///
   /// ```
-  /// use hashmap_cuda::{HashMap, RandomState};
+  /// use hashmap_cuda::{ HashMap, RandomState };
   ///
   /// let s = RandomState::new();
   /// let mut map = HashMap::with_hasher(s);
   /// map.insert(1, 2);
   /// ```
+  ///
+  /// # Panics
+  ///
+  /// If no valid runtime can be found, an early panic exits the application.
   pub fn with_hasher(hash_builder: S) -> Self {
-    Self {
-      capacity: 0
+    match preflight() {
+      Ok(_) => todo!(),
+      Err(err) => panic!(err)
     }
   }
 
@@ -195,10 +231,17 @@ impl <K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// let mut map = HashMap::with_capacity_and_hasher(10, s);
   /// map.insert(1, 2);
   /// ```
+  ///
+  /// # Panics
+  ///
+  /// If no valid runtime can be found, an early panic exits the application.
   pub fn with_capacity_and_hasher(capacity: usize, hash_builder: S)
     -> Self
   {
-    todo!()
+    match preflight() {
+      Ok(_) => todo!(),
+      Err(err) => panic!(err)
+    }
   }
 
   /// Returns a reference to the map's [`BuildHasher`].
@@ -795,10 +838,7 @@ impl<K, V, S> PartialEq for HashMap<K, V, S>
 }
 
 impl<K, V, S> Eq for HashMap<K, V, S>
-  where K: Eq + Hash, V: Eq, S: BuildHasher
-{
-  // Intentionally Blank
-}
+  where K: Eq + Hash, V: Eq, S: BuildHasher {}
 
 impl<K, V, S> Debug for HashMap<K, V, S>
   where K: Eq + Hash + Debug, V: Debug, S: BuildHasher
@@ -820,8 +860,8 @@ impl<K, Q: ?Sized, V, S> Index<&Q> for HashMap<K, V, S>
   where K: Eq + Hash + Borrow<Q>, Q: Eq + Hash, S: BuildHasher
 {
   type Output = V;
-
-  /// Returns a reference to the value corresponding to the supplied key.
+  /// Returns a reference to the value corresponding to the supplied
+  /// key.
   ///
   /// # Panics
   ///
@@ -910,18 +950,20 @@ impl<'a, K, V, S> Extend<(&'a K, &'a V)> for HashMap<K, V, S>
   }
 }
 
-
+#[inline]
+#[doc(hidden)]
 fn map_entry<'a, K: 'a, V: 'a>(
-  raw: crate::entry::rustc_entry::RustcEntry<'a, K, V>
+  raw: crate::entry::Entry<'a, K, V>
 ) -> Entry<'a, K, V> {
-  todo!()
-    // match raw {
-    //     base::RustcEntry::Occupied(base) => Entry::Occupied(OccupiedEntry { base }),
-    //     base::RustcEntry::Vacant(base) => Entry::Vacant(VacantEntry { base }),
-    // }
+  use crate::entry::*;
+  match raw {
+    Occupied(base) => Occupied(OccupiedEntry { base }),
+    Vacant(base) => Vacant(VacantEntry { base }),
+  }
 }
 
-
+#[inline]
+#[doc(hidden)]
 fn map_collection_alloc_err(
   err: crate::error::CollectionAllocErr
 ) -> Error {
@@ -936,7 +978,8 @@ fn map_collection_alloc_err(
   }
 }
 
-
+#[inline]
+#[doc(hidden)]
 fn map_raw_entry<'a, K: 'a, V: 'a, S: 'a>(
   raw: crate::entry::EntryMut<'a, K, V, S>,
 ) -> EntryMut<'a, K, V, S> {
@@ -1027,6 +1070,13 @@ mod test {
   fn _assert_hashmap_is_unwind_safe() {
     fn assert_unwind_safe<T: crate::panic::UnwindSafe>() {}
     assert_unwind_safe::<HashMap<(), crate::cell::UnsafeCell<()>>>();
+  }
+
+  #[bench]
+  fn bench_hashmap(b: &mut Bencher) {
+    b.iter(|| {
+
+    });
   }
 
   #[test]

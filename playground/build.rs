@@ -3,6 +3,7 @@
 
 /// See: https://github.com/rust-lang/hashbrown/blob/master/build.rs
 fn main() {
+  println!("cargo:rustc-link-search=native=/opt/cuda/include");
   println!("cargo:rerun-if-changed=build.rs");
   println!("cargo:rerun-if-env-changed=CUDA_HOME");
   println!("cargo:rerun-if-env-changed=CUDA_PATH");

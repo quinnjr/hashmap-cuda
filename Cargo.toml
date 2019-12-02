@@ -10,18 +10,25 @@ authors = [
 edition = "2018"
 homepage = "https://github.com/quinnjr/hashmap-cuda"
 license = "ISC"
-keywords = ["hash", "hashmap", "hashbrown", "data", "structure", "cuda", "parallel", "swisstable"]
-exclude = [ "project/" ]
+keywords = [
+  "hash", "hashmap", "hashbrown", "data", "structure", "cuda", "parallel"
+]
+exclude = [ "project/", "cuda-playground" ]
 build = "build.rs"
 
+[badges]
+is-it-maintained-issue-resolution = { repository = "quinnjr/hashmap-cuda" }
+maintenance = { status = "actively-developed" }
+
 [package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
 features = ["nightly"]
 
 [dependencies]
 cfg-if = "0.1.10"
 compiler_builtins = { version = "0.1.2", optional = true }
-cuda-sys = "0.2.0"
 failure = "0.1.6"
+bitmask = { version = "0.5.0", default-features = false }
 
 [dependencies.ahash]
 version = "0.2.18"
@@ -38,6 +45,10 @@ version = "1.0"
 optional = true
 package = "rustc-std-workspace-core"
 
+[dependencies.cuda]
+version = "0.4.0-pre.2"
+features = [ "cuda_10_1" ]
+
 [dependencies.serde]
 version = "1.0.102"
 optional = true
@@ -45,15 +56,13 @@ features = ["derive"]
 
 [dev-dependencies]
 clippy = "0.0.302"
-lazy_static = "1.4.0"
-rand = "0.7.2"
 rustc-hash = "1.0.1"
 
 [build-dependencies]
 autocfg = "0.1.7"
 
 [features]
-default = ["std", "ahash", "ahash-compile-time-rng"]
+default = ["ahash", "ahash-compile-time-rng"]
 ahash-compile-time-rng = ["ahash/compile-time-rng"]
 std = []
 nightly = []
