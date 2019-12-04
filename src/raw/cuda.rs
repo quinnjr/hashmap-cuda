@@ -1,12 +1,123 @@
+// Copyright (c) 2019 Maia Duschatzky, Michael McCarthy, and Joseph Quinn.
+// SPDX-License-Identifier: ISC
+
 use super::bitmask::BitMask;
 use super::EMPTY;
 
-use core::{
-  mem, ptr
+use crate::result::Result;
+
+use cuda::{
+  driver::cuda_initialized,
+  rand::CurandDefaultRng,
+  runtime::{
+    cuda_alloc_device,
+    cuda_memcpy,
+    CudaDevice,
+    CudaMemcpyKind
+  }
 };
 
-use cuda;
+use core::{
+  mem,
+  ptr,
+  slice
+};
 
+/// Number of random keys to consume.
+const N: usize = 2;
+/// Number of random keys to generate.
+const GENCOUNT: usize = 30;
+/// Add some additional randomness to the generated keys.
+const RANDOMIZER: usize = 65535;
+
+/// Generate a tuple of u64 values to use as hashmap keys.
+///
+/// Utilizes the Curand library to generate `GENCOUNT` unsigned 32-bit
+/// values on the GPU from with a psuedorandom seed of the raw 64-bit
+/// value of the pointer to an empty array of `GENCOUNT` 32-bit
+/// values.
+///
+/// Arbitrarily, values from the randomly generated array at indexes
+/// 4 and 12 are returned to the consuming hasher.
+///
+/// # Panic
+/// Problems in the CUDA driver will cause the program to panic early.
+///
+/// Improper randomization of keys will cause a panic. We want randomization!
+///
+/// # TODO
+/// More psuedorandom selection of the final two hash keys.
+/// More optimizations.
+/// Convert to raw C and use ffi??
+///
+/// Frankly, Jospeh believes the hashmap key randomomization might
+/// benefit from being written in C and the returned values then
+/// being consumed in the Rust library.
+///
+/// The current `cuda` crate documentation made this function
+/// feel very hack-y. Additional optimizations may definitely
+/// be done here.
+#[inline]
+pub fn hashmap_random_keys() -> Result<(u64, u64)> {
+  // Ensure that CUDA is loaded.
+  assert!(cuda_initialized()? == true);
+  // Ensure we have a CUDA device ready.
+  assert!(CudaDevice::count()? > 0);
+
+  // Keys generation inside an unsafe block
+  // TODO: Change to a compile-time sized array.
+  // TODO: Change to using `Result` type for error propegation.
+  // TODO: Triple-check for memory leaks.
+  let keys: [u64] = unsafe {
+    // Allocate the internal block keys to a compile-time sized array of `GENCOUNT`.
+    let keys: [u32; GENCOUNT] = [0u32; GENCOUNT];
+    // Create a pointer to the key array.
+    let keys_ptr: *mut [u32; GENCOUNT] = &mut keys;
+    // Allocate `GENCOUNT` u32's on the GPU.
+    let keys_cuda_ptr = cuda_alloc_device(GENCOUNT * mem::size_of::<u32>());
+
+    // Initialize a `cuda::rand::CurandDefaultRng` generator.
+    let mut generator = match CurandDefaultRng::create() {
+      Ok(g) => g,
+      Err(e) => panic!("Failed to initialize CURAND generator: {}", e)
+    };
+
+    // Seed the generator from the u64 representation of the keys pointer.
+    generator.set_seed_from_u64(keys_ptr as u64)
+      .expect("Failed to set number of quasirandom dims");
+    // Generate the random keys.
+    generator.gen_u32(keys_cuda_ptr.cast::<u32>(), GENCOUNT)
+      .expect("Failed to generate random numbers.");
+
+    // Copy the CUDA memory to system memory.
+    cuda_memcpy(
+      keys_ptr as *mut u32,
+      keys_cuda_ptr as *const u32,
+      GENCOUNT,
+      CudaMemcpyKind::DeviceToHost
+    )
+      .expect("Failed to copy CUDA device memory");
+
+    // Convert the keys pointer in to a Rust slice.
+    slice::from_raw_parts(keys_ptr as *mut u32, N)
+  };
+
+  // Ensure the keys are not the same value.
+  // Panic if they are.
+  assert_ne!(keys[0], keys[1],
+    "The psuedorandom generator returned two keys of the same value. That really isn't very random!");
+
+  // Return a `Result` with our random keys, multiplied by
+  // a little more randomness (arbitrarily, the maximum
+  // value of a u16).
+  Ok((keys[0].wrapping_mul(RANDOMIZER), keys[1].wrapping_mul(RANDOMIZER)))
+}
+
+// Below, Swisstable implementation.
+//
+// TODO: Optimize for CUDA use.
+// The below was mostly copied as-is from `hashbrown` with a
+// minimum of understanding of optimizing the hash table.
 type GroupWord = u64;
 pub type BitMaskWord = GroupWord;
 pub const BITMASK_STRIDE: usize = 1;
@@ -107,7 +218,7 @@ impl Group {
     // If the high bit is set, then the byte must be either:
     // 1111_1111 (EMPTY) or 1000_0000 (DELETED).
     // So we can just check if the top two bits are 1 by ANDing them.
-      BitMask((self.0 & (self.0 << 1) & repeat(0x80)).to_le())
+    BitMask((self.0 & (self.0 << 1) & repeat(0x80)).to_le())
   }
 
   /// Returns a `BitMask` indicating all bytes in the group which are

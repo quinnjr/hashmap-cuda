@@ -9,6 +9,8 @@ use core::{
 };
 
 /// The error type for `try_reserve` methods.
+///
+/// TODO: Consider removing and just using `CollectionAllocError`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TryReserveError {
   /// Error due to the computed capacity exceeding the collection's maximum
@@ -56,23 +58,28 @@ macro_rules! error_enumeration {
         fn from(err: $cause) -> Self { Self::$name(err) }
       }
     )*
+
+    impl ::core::fmt::Display for Error {
+      fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        write!(f, "{}", self)
+      }
+    }
   };
 }
 
 error_enumeration! {
   AllocLayout => ::core::alloc::LayoutErr,
-  // #[cfg(feature = "std")] BoxedError => ::std::boxed::Box<dyn ::std::error::Error>,
   CellBorrow => ::core::cell::BorrowError,
   Fail => failure::Error,
   Format => ::core::fmt::Error,
   ParseInt => ::core::num::ParseIntError,
   ParseFloat => ::core::num::ParseFloatError,
-  // #[cfg(feature = "std")] StringError => ::std::string::String,
   TryFromInt => ::core::num::TryFromIntError,
   TryReserve => self::TryReserveError,
   CollectionAlloc => self::CollectionAllocErr,
   CurandError => cuda::rand::CurandError,
   CuError => cuda::driver::CuError,
-  CudaRuntimeError => cuda::runtime::CudaError
-
+  CudaRuntimeError => cuda::runtime::CudaError,
+  // #[cfg(feature = "std")] BoxedError => ::std::boxed::Box<dyn ::std::error::Error>,
+  #[cfg(feature = "std")] FromString => ::std::string::String
 }

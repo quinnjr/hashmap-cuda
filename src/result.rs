@@ -6,7 +6,11 @@ use core::convert::Into;
 
 /// `Result` type for the `hashmap-cuda` crate.
 ///
-/// Converts all Errors raised into the custom [`Error`] enum.
+/// Values returned from a function using `Result` will be of type T.
+/// If no T is specified, T is a unit type.
+///
+/// Converts all Errors returned by `Result::Err` into the
+/// crate [`Error`] enum.
 ///
 /// [`Error`]: enum.Error.html
-pub type Result<T> = ::core::result::Result<T, dyn Into<Error>>;
+pub type Result<T=()> = ::core::result::Result<T, Error>;

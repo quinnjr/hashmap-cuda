@@ -1,6 +1,6 @@
 [package]
 name = "hashmap-cuda"
-version = "0.1.0"
+version = "0.1.0-pre.1"
 description = "A reimplementation of `std::collections::HashMap` using CUDA for parallelization."
 authors = [
   "Maia Duschatzky",
@@ -11,9 +11,9 @@ edition = "2018"
 homepage = "https://github.com/quinnjr/hashmap-cuda"
 license = "ISC"
 keywords = [
-  "hash", "hashmap", "hashbrown", "data", "structure", "cuda", "parallel"
+  "hash", "hashmap", "data", "structure", "cuda", "parallel"
 ]
-exclude = [ "project/", "cuda-playground" ]
+exclude = [ "project/", "playground" ]
 build = "build.rs"
 
 [badges]
@@ -28,7 +28,7 @@ features = ["nightly"]
 cfg-if = "0.1.10"
 compiler_builtins = { version = "0.1.2", optional = true }
 failure = "0.1.6"
-bitmask = { version = "0.5.0", default-features = false }
+# bitmask = { version = "0.5.0", default-features = false }
 
 [dependencies.ahash]
 version = "0.2.18"
@@ -49,10 +49,10 @@ package = "rustc-std-workspace-core"
 version = "0.4.0-pre.2"
 features = [ "cuda_10_1" ]
 
-[dependencies.serde]
-version = "1.0.102"
-optional = true
-features = ["derive"]
+# [dependencies.serde]
+# version = "1.0.102"
+# optional = true
+# features = ["derive"]
 
 [dev-dependencies]
 clippy = "0.0.302"

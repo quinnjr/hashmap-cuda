@@ -256,3 +256,18 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
     mem::replace(&mut entry.0, self.key.unwrap())
   }
 }
+
+/// A view into an occupied entry in a `HashMap`.
+/// It is part of the [`RawEntryMut`] enum.
+///
+/// [`RawEntryMut`]: enum.RawEntryMut.html
+pub struct OccupiedEntryMut<'a, K, V> {
+  elem: Bucket<(K, V)>,
+  table: &'a mut Table<(K, V)>,
+}
+
+unsafe impl<K, V> Send for OccupiedEntryMut<'_, K, V>
+  where K: Send, V: Send {}
+
+unsafe impl<K, V> Sync for OccupiedEntryMut<'_, K, V>
+  where K: Sync, V: Sync {}

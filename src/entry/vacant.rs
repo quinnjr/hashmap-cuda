@@ -108,3 +108,12 @@ impl<'a, K, V> VacantEntry<'a, K, V> {
     }
   }
 }
+
+/// A view into a vacant entry in a `HashMap`.
+/// It is part of the [`RawEntryMut`] enum.
+///
+/// [`RawEntryMut`]: enum.RawEntryMut.html
+pub struct VacantEntryMut<'a, K, V, S> {
+  table: &'a mut Table<(K, V)>,
+  hash_builder: &'a S,
+}

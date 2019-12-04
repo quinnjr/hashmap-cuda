@@ -17,9 +17,9 @@ use crate::{
   scopeguard::guard
 };
 
+// TODO: Consider replacing with `bitmask` crate.
 pub(crate) mod bitmask;
 pub(crate) mod cuda;
-pub(crate) mod sys;
 
 use self::bitmask::BitMask;
 // Drop-in replacement of `generic` and `sse2` implementations
@@ -56,6 +56,7 @@ enum Fallibility {
 
 impl Fallibility {
   /// Error to return on capacity overflow.
+  #[inline]
   fn capacity_overflow(self) -> CollectionAllocErr {
     use Fallibility::*;
     match self {
@@ -65,6 +66,7 @@ impl Fallibility {
   }
 
   /// Error to return on allocation error.
+  #[inline]
   fn alloc_err(self, layout: Layout) -> CollectionAllocErr {
     use Fallibility::*;
     match self {

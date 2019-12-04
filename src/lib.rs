@@ -76,9 +76,11 @@ compile_error!("CUDA compilation is not known to be supported on this platform."
 
 use core::{
   borrow::Borrow,
-  fmt::{ Debug, Display, Formatter, Result as FmtResult },
+  fmt::{ Debug, Display, Formatter },
   iter::FromIterator,
   hash::{ BuildHasher, Hash },
+  marker::PhantomData,
+  mem,
   ops::Index
 };
 
@@ -86,7 +88,6 @@ mod entry;
 mod hasher;
 mod iterator;
 mod keys;
-// mod macro;
 mod state;
 mod raw;
 mod scopeguard;
@@ -96,13 +97,14 @@ pub mod error;
 pub mod result;
 
 pub use crate::{
-  entry::*,
+  entry::{ Entry, EntryMut, EntryBuilder, EntryBuilderMut,
+    OccupiedEntry, VacantEntry },
   error::Error,
-  hasher::*,
-  iterator::*,
+  hasher::{ DefaultHasher, DefaultHashBuilder, SipHasher13 },
+  iterator::{ Iter, IterMut, IntoIter, Drain },
   keys::*,
-  // macro::hashmap,
   state::*,
+  raw::Table,
   result::Result,
   values::*
 };
@@ -122,7 +124,7 @@ use cuda::{ driver, runtime };
 ///
 /// If no valid runtime can be found, the `HashMap` will panic.
 #[inline]
-fn preflight() -> Result<()> {
+fn preflight() -> Result {
   if !driver::cuda_initialized().unwrap_or(false) {
     let num_dev_count = runtime::CudaDevice::count();
     match num_dev_count {
@@ -133,13 +135,20 @@ fn preflight() -> Result<()> {
   };
 }
 
+#[inline]
+pub(crate) fn make_hash<K: Hash + ?Sized>(hash_builder: &impl BuildHasher, val: &K) -> u64 {
+  let mut state = hash_builder.build_hasher();
+  val.hash(&mut state);
+  state.finish()
+}
+
 #[derive(Clone)]
 pub struct HashMap<K, V, S = DefaultHashBuilder> {
   pub(crate) hash_builder: S,
   pub(crate) table: Table<(K, V)>
 }
 
-impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
+impl <K, V> HashMap<K, V, DefaultHashBuilder> where K: Eq + Hash {
   /// Creates an empty `Hashmap`.
   ///
   /// # Examples
@@ -173,11 +182,13 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// If no valid runtime can be found, an early panic exits the application.
   pub fn with_capacity(capacity: usize) -> Self {
     match preflight() {
-      Ok(_) => todo!(),
+      Ok(_) => Self::with_capacity_and_hasher(capacity, DefaultHashBuilder::default()),
       Err(err) => panic!(err)
     }
   }
+}
 
+impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash {
   /// Creates an empty `HashMap` which will use the given hash
   /// builder to hash keys.
   ///
@@ -203,14 +214,16 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// If no valid runtime can be found, an early panic exits the application.
   pub fn with_hasher(hash_builder: S) -> Self {
     match preflight() {
-      Ok(_) => todo!(),
+      Ok(_) => Self{
+        hash_builder,
+        table: Table::new()
+      },
       Err(err) => panic!(err)
     }
   }
 
   /// Creates an empty `HashMap` with the specified capacity,
-  /// using `hash_builder`
-  /// to hash the keys.
+  /// using `hash_builder` to hash the keys.
   ///
   /// The hash map will be able to hold at least `capacity`
   /// elements without reallocating.
@@ -235,30 +248,285 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// # Panics
   ///
   /// If no valid runtime can be found, an early panic exits the application.
-  pub fn with_capacity_and_hasher(capacity: usize, hash_builder: S)
-    -> Self
+  pub fn with_capacity_and_hasher(capacity: usize, hash_builder: S) -> Self
   {
     match preflight() {
-      Ok(_) => todo!(),
+      Ok(_) => Self {
+        hash_builder,
+        table: Table::with_capacity(capacity)
+      },
       Err(err) => panic!(err)
     }
   }
 
   /// Returns a reference to the map's [`BuildHasher`].
   ///
-  /// [`BuildHasher`]&#x3A; ../../std/hash/trait.BuildHasher.html
+  /// [`BuildHasher`]: https://doc.rust-lang.org/src/std/hash/trait.BuildHasher.html
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
-  /// use hashmap_cude::RandomState;
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  /// use hashmap_cuda::RandomState;
   ///
   /// let hasher = RandomState::new();
   /// let map: HashMap<i32, i32> = HashMap::with_hasher(hasher);
   /// let hasher: &RandomState = map.hasher();
-  ///`
+  /// ```
   pub fn hasher(&self) -> &S {
-    todo!()
+    &self.hash_builder
+  }
+
+  /// Returns the number of elements the map can hold without reallocating.
+  ///
+  /// This number is a lower bound; the `HashMap<K, V>` might be able to hold
+  /// more, but is guaranteed to be able to hold at least this many.
+  ///
+  /// `/// use hashmap-cuda::HashMap;
+  /// let mut map: HashMap<&str, i64> = HashMap::with_capacity(100);
+  /// assert!(map.capacity() >= 100);
+  ///`
+  pub fn capacity(&self) -> usize {
+    self.capacity
+  }
+
+  /// An iterator visiting all keys in arbitrary order.
+  /// The iterator element type is `&'a K`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut map = HashMap::new();
+  /// map.insert("a", 1);
+  /// map.insert("b", 2);
+  /// map.insert("c", 3);
+  ///
+  /// for key in map.keys() {
+  ///     println!("{}", key);
+  /// }
+  /// ```
+  pub fn keys(&self) -> Keys<'_, K, V> {
+    Keys { inner: self.iter() }
+  }
+
+  /// An iterator visiting all values in arbitrary order.
+  /// The iterator element type is `&'a V`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut map = HashMap::new();
+  /// map.insert("a", 1);
+  /// map.insert("b", 2);
+  /// map.insert("c", 3);
+  ///
+  /// for val in map.values() {
+  ///     println!("{}", val);
+  /// }
+  /// ```
+  pub fn values(&self) -> Values<'_, K, V> {
+    Values { inner: self.iter() }
+  }
+
+  /// An iterator visiting all values mutably in arbitrary order.
+  /// The iterator element type is `&'a mut V`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut map = HashMap::new();
+  ///
+  /// map.insert("a", 1);
+  /// map.insert("b", 2);
+  /// map.insert("c", 3);
+  ///
+  /// for val in map.values_mut() {
+  ///     *val = *val + 10;
+  /// }
+  ///
+  /// for val in map.values() {
+  ///     println!("{}", val);
+  /// }
+  /// ```
+  pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
+    ValuesMut { inner: self.iter_mut() }
+  }
+
+  /// An iterator visiting all key-value pairs in arbitrary order.
+  /// The iterator element type is `(&'a K, &'a V)`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut map = HashMap::new();
+  /// map.insert("a", 1);
+  /// map.insert("b", 2);
+  /// map.insert("c", 3);
+  ///
+  /// for (key, val) in map.iter() {
+  ///     println!("key: {} val: {}", key, val);
+  /// }
+  /// ```
+  pub fn iter(&self) -> Iter<'_, K, V> {
+    unsafe {
+      Iter {
+        inner: self.table.iter(),
+        marker: PhantomData
+      }
+    }
+  }
+
+  /// An iterator visiting all key-value pairs in arbitrary order,
+  /// with mutable references to the values.
+  /// The iterator element type is `(&'a K, &'a mut V)`.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut map = HashMap::new();
+  /// map.insert("a", 1);
+  /// map.insert("b", 2);
+  /// map.insert("c", 3);
+  ///
+  /// // Update all values
+  /// for (_, val) in map.iter_mut() {
+  ///     *val *= 2;
+  /// }
+  ///
+  /// for (key, val) in &map {
+  ///     println!("key: {} val: {}", key, val);
+  /// }
+  /// ```
+  pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
+    unsafe {
+      IterMut {
+        inner: self.table.iter(),
+        marker: PhantomData
+      }
+    }
+  }
+
+  #[cfg(test)]
+  #[inline]
+  fn raw_capacity(&self) -> usize {
+    self.table.buckets()
+  }
+
+  /// Returns the number of elements in the map.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut a = HashMap::new();
+  /// assert_eq!(a.len(), 0);
+  /// a.insert(1, "a");
+  /// assert_eq!(a.len(), 1);
+  /// ```
+  pub fn len(&self) -> usize {
+    self.table.len()
+  }
+
+  /// Returns `true` if the map contains no elements.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut a = HashMap::new();
+  /// assert!(a.is_empty());
+  /// a.insert(1, "a");
+  /// assert!(!a.is_empty());
+  /// ```
+  pub fn is_empty(&self) -> bool {
+    self.len() == 0
+  }
+
+  /// Clears the map, returning all key-value pairs as an iterator. Keeps the
+  /// allocated memory for reuse.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut a = HashMap::new();
+  /// a.insert(1, "a");
+  /// a.insert(2, "b");
+  ///
+  /// for (k, v) in a.drain().take(1) {
+  ///     assert!(k == 1 || k == 2);
+  ///     assert!(v == "a" || v == "b");
+  /// }
+  ///
+  /// assert!(a.is_empty());
+  /// ```
+  pub fn drain(&mut self) -> Drain<'_, K, V> {
+    unsafe {
+      Drain {
+        inner: self.table.drain()
+      }
+    }
+  }
+
+  /// Clears the map, removing all key-value pairs. Keeps the allocated memory
+  /// for reuse.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut a = HashMap::new();
+  /// a.insert(1, "a");
+  /// a.clear();
+  /// assert!(a.is_empty());
+  /// ```
+  #[inline]
+  pub fn clear(&mut self) {
+    self.table.clear();
+  }
+}
+
+impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
+  /// Gets the given key's corresponding entry in the map for in-place manipulation.
+  ///
+  /// # Examples
+  ///
+  /// ```
+  /// use hashmap_cuda::HashMap;
+  ///
+  /// let mut letters = HashMap::new();
+  ///
+  /// for ch in "a short treatise on fungi".chars() {
+  ///   let counter = letters.rustc_entry(ch).or_insert(0);
+  ///   *counter += 1;
+  /// }
+  ///
+  /// assert_eq!(letters[&'s'], 2);
+  /// assert_eq!(letters[&'t'], 3);
+  /// assert_eq!(letters[&'u'], 1);
+  /// assert_eq!(letters.get(&'y'), None);
+  /// ```
+  ///
+  /// Todo:  This function can probably be eliminated entirely.
+  #[inline]
+  #[deprecated(since ="0.1.0-pre.1",
+    note = "Entries can be obtained from the `entry()` function instead")]
+  pub fn rustc_entry(&mut self, key: K) -> Entry<'_, K, V> {
+    self.entry(key)
   }
 
   /// Reserves capacity for at least `additional` more elements to be inserted
@@ -269,16 +537,19 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// Panics if the new allocation size overflows [`usize`].
   ///
-  /// [`usize`]&#x3A; ../../std/primitive.usize.html
+  /// [`usize`]: https://doc.rust-lang.org/src/std/primitive.usize.html
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   /// let mut map: HashMap<&str, i32> = HashMap::new();
   /// map.reserve(10);
-  ///`
+  /// ```
+  #[inline]
   pub fn reserve(&mut self, additional: usize) {
-    todo!()
+    let hash_builder = &self.hash_builder;
+    self.table.reserve(additional, |x| make_hash(hash_builder, &x.0));
   }
 
   /// Tries to reserve capacity for at least `additional` more elements to be inserted
@@ -292,16 +563,17 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// `/// #![feature(try_reserve)]
+  /// ```
+  /// #![feature(try_reserve)]
   /// use hashmap_cuda::HashMap;
   /// let mut map: HashMap<&str, isize> = HashMap::new();
   /// map.try_reserve(10).expect("why is the test harness OOMing on 10 bytes?");
-  ///`
-  pub fn try_reserve(&mut self, additional: usize) -> Result<()>
+  /// ```
+  #[inline]
+  pub fn try_reserve(&mut self, additional: usize) -> Result
   {
-      // self.try_reserve(additional)
-      //     .map_err(map_collection_alloc_err)
-    todo!()
+    let hash_builder = &self.hash_builder;
+    self.table.try_reserve(additional, |x| make_hash(hash_builder, &x.0))
   }
 
   /// Shrinks the capacity of the map as much as possible. It will drop
@@ -320,7 +592,8 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// assert!(map.capacity() >= 2);
   ///`
   pub fn shrink_to_fit(&mut self) {
-    todo!()
+    let hash_builder = &self.hash_builder;
+    self.table.shrink_to(0, |x| make_hash(hash_builder, &x.0));
   }
 
   /// Shrinks the capacity of the map with a lower limit. It will drop
@@ -349,14 +622,16 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
       self.capacity() >= min_capacity,
       "Tried to shrink to a larger capacity"
     );
-    todo!()
+    let hash_builder = &self.hash_builder;
+    self.table.shrink_to(min_capacity, |x| make_hash(hash_builder, &x.0));
   }
 
   /// Gets the given key's corresponding entry in the map for in-place manipulation.
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   ///
   /// let mut letters = HashMap::new();
   ///
@@ -369,9 +644,23 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// assert_eq!(letters[&'t'], 3);
   /// assert_eq!(letters[&'u'], 1);
   /// assert_eq!(letters.get(&'y'), None);
-  ///`
+  /// ```
+  #[inline]
   pub fn entry(&mut self, key: K) -> Entry<'_, K, V> {
-    todo!()
+    let hash = make_hash(&self.hash_builder, &key);
+    if let Some(elem) = self.table.find(hash, |q| q.0.eq(&key)) {
+      Entry::Occupied(OccupiedEntry {
+        key: Some(key),
+        elem,
+        table: self
+      })
+    } else {
+      Entry::Vacant(VacantEntry {
+        hash,
+        key,
+        table: self
+      })
+    }
   }
 
   /// Returns a reference to the value corresponding to the key.
@@ -385,17 +674,18 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   ///
   /// let mut map = HashMap::new();
   /// map.insert(1, "a");
   /// assert_eq!(map.get(&1), Some(&"a"));
   /// assert_eq!(map.get(&2), None);
-  ///`
-  pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
-    where K: Borrow<Q>, Q: Hash + Eq,
+  /// ```
+  #[inline]
+  pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V> where K: Borrow<Q>, Q: Hash + Eq
   {
-    todo!()
+    self.get_key_value(k).map(|(_, v)| v)
   }
 
   /// Returns the key-value pair corresponding to the supplied key.
@@ -409,18 +699,25 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// `/// #![feature(map_get_key_value)]
+  /// ```
+  /// #![feature(map_get_key_value)]
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut map = HashMap::new();
   /// map.insert(1, "a");
   /// assert_eq!(map.get_key_value(&1), Some((&1, &"a")));
   /// assert_eq!(map.get_key_value(&2), None);
-  ///`
+  /// ```
+  #[inline]
   pub fn get_key_value<Q: ?Sized>(&self, k: &Q) -> Option<(&K, &V)>
-    where K: Borrow<Q>, Q: Hash + Eq,
+    where K: Borrow<Q>, Q: Hash + Eq
   {
-    todo!()
+    let hash = make_hash(&self.hash_builder, k);
+    self.table.find(hash, |x| k.eq(x.0.borrow()))
+      .map(|item| unsafe {
+        let &(ref key, ref value) = item.as_ref();
+        (key, value)
+      })
   }
 
   /// Returns `true` if the map contains a value for the specified key.
@@ -434,17 +731,19 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   ///
   /// let mut map = HashMap::new();
   /// map.insert(1, "a");
   /// assert_eq!(map.contains_key(&1), true);
   /// assert_eq!(map.contains_key(&2), false);
-  ///`
+  /// ```
+  #[inline]
   pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
-    where K: Borrow<Q>, Q: Hash + Eq,
+    where K: Borrow<Q>, Q: Hash + Eq
   {
-    todo!()
+    self.get(k).is_some()
   }
 
   /// Returns a mutable reference to the value corresponding to the key.
@@ -458,7 +757,8 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   ///
   /// let mut map = HashMap::new();
   /// map.insert(1, "a");
@@ -466,11 +766,14 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///     *x = "b";
   /// }
   /// assert_eq!(map[&1], "b");
-  ///`
+  /// ```
+  #[inline]
   pub fn get_mut<Q: ?Sized>(&mut self, k: &Q) -> Option<&mut V>
     where K: Borrow<Q>, Q: Hash + Eq,
   {
-    todo!()
+    let hash = make_hash(&self.hash_builder, k);
+    self.table.find(hash, |x| k.eq(x.0.borrow()))
+      .map(|item| unsafe { &mut item.as_mut().1 })
   }
 
   /// Inserts a key-value pair into the map.
@@ -482,12 +785,13 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// types that can be `==` without being identical. See the [module-level
   /// documentation] for more.
   ///
-  /// [`None`]&#x3A; ../../std/option/enum.Option.html#variant.None
+  /// [`None`]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
   /// [module-level documentation]&#x3A; index.html#insert-and-complex-keys
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   ///
   /// let mut map = HashMap::new();
   /// assert_eq!(map.insert(37, "a"), None);
@@ -496,9 +800,19 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// map.insert(37, "b");
   /// assert_eq!(map.insert(37, "c"), Some("b"));
   /// assert_eq!(map[&37], "c");
-  ///`
+  /// ```
+  #[inline]
   pub fn insert(&mut self, k: K, v: V) -> Option<V> {
-    todo!()
+    unsafe {
+      let hash = make_hash(&self.hash_builder, &k);
+      if let Some(item) = self.table.find(hash, |x| k.eq(&x.0)) {
+        Some(mem::replace(&mut item.as_mut().1, v))
+      } else {
+        let hash_builder = &self.hash_builder;
+        self.table.insert(hash, (k, v), |x| make_hash(hash_builder, &x.0));
+        None
+      }
+    }
   }
 
   /// Removes a key from the map, returning the value at the key if the key
@@ -508,22 +822,24 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// [`Hash`] and [`Eq`] on the borrowed form _must_ match those for
   /// the key type.
   ///
-  /// [`Eq`]&#x3A; ../../std/cmp/trait.Eq.html
-  /// [`Hash`]&#x3A; ../../std/hash/trait.Hash.html
+  /// [`Eq`]: https://doc.rust-lang.org/std/cmp/trait.Eq.html
+  /// [`Hash`]: https://doc.rust-lang.org/std/hash/trait.Hash.html
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   ///
   /// let mut map = HashMap::new();
   /// map.insert(1, "a");
   /// assert_eq!(map.remove(&1), Some("a"));
   /// assert_eq!(map.remove(&1), None);
-  ///`
+  /// ```
+  #[inline]
   pub fn remove<Q: ?Sized>(&mut self, k: &Q) -> Option<V>
-    where K: Borrow<Q>, Q: Hash + Eq,
+    where K: Borrow<Q>, Q: Hash + Eq
   {
-    todo!()
+    self.remove_entry(k).map(|(_, v)| v)
   }
 
   /// Removes a key from the map, returning the stored key and value if the
@@ -550,7 +866,15 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   pub fn remove_entry<Q: ?Sized>(&mut self, k: &Q) -> Option<(K, V)>
     where K: Borrow<Q>, Q: Hash + Eq
   {
-    todo!()
+    unsafe {
+      let hash = make_hash(&self.hash_builder, &k);
+      if let Some(item) = self.table.find(hash, |x| k.eq(x.0.borrow())) {
+        self.table.erase_no_drop(&item);
+        Some(item.read())
+      } else {
+        None
+      }
+    }
   }
 
   /// Retains only the elements specified by the predicate.
@@ -559,210 +883,26 @@ impl<K, V> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<i32, i32> = (0..8).map(|x|(x, x*10)).collect();
   /// map.retain(|&k, _| k % 2 == 0);
   /// assert_eq!(map.len(), 4);
-  ///`
-  pub fn retain<F>(&mut self, f: F)
-    where F: FnMut(&K, &mut V) -> bool
-  {
-    todo!()
-  }
-}
-
-impl<K, V, S> HashMap<K, V, S> {
-  /// Returns the number of elements the map can hold without reallocating.
-  ///
-  /// This number is a lower bound; the `HashMap<K, V>` might be able to hold
-  /// more, but is guaranteed to be able to hold at least this many.
-  ///
-  /// `/// use hashmap-cuda::HashMap;
-  /// let mut map: HashMap<&str, i64> = HashMap::with_capacity(100);
-  /// assert!(map.capacity() >= 100);
-  ///`
-  pub fn capacity(&self) -> usize {
-    self.capacity
-  }
-
-  /// An iterator visiting all keys in arbitrary order.
-  /// The iterator element type is `&'a K`.
-  ///
-  /// # Examples
-  ///
-  /// `/// use hashmap_cuda::HashMap;
-  ///
-  /// let mut map = HashMap::new();
-  /// map.insert("a", 1);
-  /// map.insert("b", 2);
-  /// map.insert("c", 3);
-  ///
-  /// for key in map.keys() {
-  ///     println!("{}", key);
-  /// }
-  ///`
-  pub fn keys(&self) -> Keys<'_, K, V> {
-    todo!()
-  }
-
-  /// An iterator visiting all values in arbitrary order.
-  /// The iterator element type is `&'a V`.
-  ///
-  /// # Examples
-  ///
-  /// `/// use hashmap_cuda::HashMap;
-  ///
-  /// let mut map = HashMap::new();
-  /// map.insert("a", 1);
-  /// map.insert("b", 2);
-  /// map.insert("c", 3);
-  ///
-  /// for val in map.values() {
-  ///     println!("{}", val);
-  /// }
-  ///`
-  pub fn values(&self) -> Values<'_, K, V> {
-    todo!()
-  }
-
-  /// An iterator visiting all values mutably in arbitrary order.
-  /// The iterator element type is `&'a mut V`.
-  ///
-  /// # Examples
-  ///
-  /// `/// use hashmap_cuda::HashMap;
-  ///
-  /// let mut map = HashMap::new();
-  ///
-  /// map.insert("a", 1);
-  /// map.insert("b", 2);
-  /// map.insert("c", 3);
-  ///
-  /// for val in map.values_mut() {
-  ///     *val = *val + 10;
-  /// }
-  ///
-  /// for val in map.values() {
-  ///     println!("{}", val);
-  /// }
-  ///`
-  pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
-    todo!()
-  }
-
-  /// An iterator visiting all key-value pairs in arbitrary order.
-  /// The iterator element type is `(&'a K, &'a V)`.
-  ///
-  /// # Examples
-  ///
-  /// `/// use hashmap_cuda::HashMap;
-  ///
-  /// let mut map = HashMap::new();
-  /// map.insert("a", 1);
-  /// map.insert("b", 2);
-  /// map.insert("c", 3);
-  ///
-  /// for (key, val) in map.iter() {
-  ///     println!("key: {} val: {}", key, val);
-  /// }
-  ///`
-  pub fn iter(&self) -> Iter<'_, K, V> {
-    todo!()
-  }
-
-  /// An iterator visiting all key-value pairs in arbitrary order,
-  /// with mutable references to the values.
-  /// The iterator element type is `(&'a K, &'a mut V)`.
-  ///
-  /// # Examples
-  ///
-  /// `/// use hashmap_cuda::HashMap;
-  ///
-  /// let mut map = HashMap::new();
-  /// map.insert("a", 1);
-  /// map.insert("b", 2);
-  /// map.insert("c", 3);
-  ///
-  /// // Update all values
-  /// for (_, val) in map.iter_mut() {
-  ///     *val *= 2;
-  /// }
-  ///
-  /// for (key, val) in &map {
-  ///     println!("key: {} val: {}", key, val);
-  /// }
-  ///`
-  pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
-    todo!()
-  }
-
-  /// Returns the number of elements in the map.
-  ///
-  /// # Examples
-  ///
-  /// `/// use hashmap_cuda::HashMap;
-  ///
-  /// let mut a = HashMap::new();
-  /// assert_eq!(a.len(), 0);
-  /// a.insert(1, "a");
-  /// assert_eq!(a.len(), 1);
-  ///`
-  pub fn len(&self) -> usize {
-    todo!()
-  }
-
-  /// Returns `true` if the map contains no elements.
-  ///
-  /// # Examples
-  ///
-  /// `/// use hashmap_cuda::HashMap;
-  ///
-  /// let mut a = HashMap::new();
-  /// assert!(a.is_empty());
-  /// a.insert(1, "a");
-  /// assert!(!a.is_empty());
-  ///`
-  pub fn is_empty(&self) -> bool {
-    todo!()
-  }
-
-  /// Clears the map, returning all key-value pairs as an iterator. Keeps the
-  /// allocated memory for reuse.
-  ///
-  /// # Examples
-  ///
-  /// `/// use hashmap_cuda::HashMap;
-  ///
-  /// let mut a = HashMap::new();
-  /// a.insert(1, "a");
-  /// a.insert(2, "b");
-  ///
-  /// for (k, v) in a.drain().take(1) {
-  ///     assert!(k == 1 || k == 2);
-  ///     assert!(v == "a" || v == "b");
-  /// }
-  ///
-  /// assert!(a.is_empty());
-  ///`
-  pub fn drain(&mut self) -> Drain<'_, K, V> {
-    todo!()
-  }
-
-  /// Clears the map, removing all key-value pairs. Keeps the allocated memory
-  /// for reuse.
-  ///
-  /// # Examples
-  ///
-  /// `/// use hashmap_cuda::HashMap;
-  ///
-  /// let mut a = HashMap::new();
-  /// a.insert(1, "a");
-  /// a.clear();
-  /// assert!(a.is_empty());
-  ///`
-  pub fn clear(&mut self) {
-    todo!()
+  /// ```
+  #[inline]
+  pub fn retain<F>(&mut self, f: F) where F: FnMut(&K, &mut V) -> bool {
+    // Here we only use `iter` as a temporary, preventing use-after-free
+    unsafe {
+      for item in self.table.iter() {
+        let &mut (ref key, ref mut value) = item.as_mut();
+        if !f(key, value) {
+          // Erase the element from the table first since drop might panic.
+          self.table.erase_no_drop(&item);
+          item.drop();
+        }
+      }
+    }
   }
 }
 
@@ -798,8 +938,9 @@ impl<K, V, S> HashMap<K, V, S> where S: BuildHasher {
   /// so that the map now contains keys which compare equal, search may start
   /// acting erratically, with two keys randomly masking each other. Implementations
   /// are free to assume this doesn't happen (within the limits of memory-safety).
+  #[inline]
   pub fn raw_entry_mut(&mut self) -> EntryBuilderMut<'_, K, V, S> {
-    todo!()
+    EntryBuilderMut { map: self }
   }
 
   /// Creates a raw immutable entry builder for the HashMap.
@@ -816,9 +957,11 @@ impl<K, V, S> HashMap<K, V, S> where S: BuildHasher {
   /// Unless you are in such a situation, higher-level and more foolproof APIs like
   /// `get` should be preferred.
   ///
-  /// Immutable raw entries have very limited use; you might instead want `raw_entry_mut`.
-  pub fn raw_entry(&self) -> RawEntryBuilder<'_, K, V, S> {
-    todo!()
+  /// Immutable raw entries have very limited use; you might instead want
+  /// `raw_entry_mut`.
+  #[inline]
+  pub fn raw_entry(&self) -> EntryBuilder<'_, K, V, S> {
+    EntryBuilder { map: self }
   }
 }
 
@@ -843,7 +986,7 @@ impl<K, V, S> Eq for HashMap<K, V, S>
 impl<K, V, S> Debug for HashMap<K, V, S>
   where K: Eq + Hash + Debug, V: Debug, S: BuildHasher
 {
-  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+  fn fmt(&self, f: &mut Formatter<'_>) -> Result {
     f.debug_map().entries(self.iter()).finish()
   }
 }
@@ -851,8 +994,10 @@ impl<K, V, S> Debug for HashMap<K, V, S>
 impl<K, V, S> Default for HashMap<K, V, S>
   where K: Eq + Hash, S: BuildHasher + Default
 {
+  /// Creates an empty `HashMap<K, V, S>`, with the `Default` value for the hasher.
+  #[inline]
   fn default() -> Self {
-    todo!()
+    Self::with_hasher(Default::default())
   }
 }
 
@@ -866,14 +1011,9 @@ impl<K, Q: ?Sized, V, S> Index<&Q> for HashMap<K, V, S>
   /// # Panics
   ///
   /// Panics if the key is not present in the `HashMap`.
+  #[inline]
   fn index(&self, key: &Q) -> &V {
     self.get(key).expect("no entry found for key")
-  }
-}
-
-impl <K, V, S> Display for HashMap<K, V, S> {
-  fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-    todo!()
   }
 }
 
@@ -916,15 +1056,18 @@ impl<K, V, S> IntoIterator for HashMap<K, V, S> {
   /// // Not possible with .iter()
   /// let vec: Vec<(&str, i32)> = map.into_iter().collect();
   /// ```
-
+  #[inline]
   fn into_iter(self) -> IntoIter<K, V> {
-    todo!()
+    IntoIter {
+      inner: self.table.into_iter()
+    }
   }
 }
 
 impl<K, V, S> FromIterator<(K, V)> for HashMap<K, V, S>
   where K: Eq + Hash, S: BuildHasher + Default
 {
+  #[inline]
   fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T)
     -> HashMap<K, V, S>
   {
@@ -937,8 +1080,22 @@ impl<K, V, S> FromIterator<(K, V)> for HashMap<K, V, S>
 impl<K, V, S> Extend<(K, V)> for HashMap<K, V, S>
   where K: Eq + Hash, S: BuildHasher
 {
+  #[inline]
   fn extend<T: IntoIterator<Item = (K, V)>>(&mut self, iter: T) {
-    todo!()
+  // Keys may be already present or show multiple times in the iterator.
+  // Reserve the entire hint lower bound if the map is empty.
+  // Otherwise reserve half the hint (rounded up), so the map
+  // will only resize twice in the worst case.
+  let iter = iter.into_iter();
+  let reserve = if self.is_empty() {
+    iter.size_hint().0
+  } else {
+    (iter.size_hint().0 + 1) / 2
+  };
+  self.reserve(reserve);
+  iter.for_each(move |(k, v)| {
+    self.insert(k, v);
+  });
   }
 }
 
@@ -946,19 +1103,7 @@ impl<'a, K, V, S> Extend<(&'a K, &'a V)> for HashMap<K, V, S>
   where K: Eq + Hash + Copy, V: Copy, S: BuildHasher
 {
   fn extend<T: IntoIterator<Item = (&'a K, &'a V)>>(&mut self, iter: T) {
-    todo!()
-  }
-}
-
-#[inline]
-#[doc(hidden)]
-fn map_entry<'a, K: 'a, V: 'a>(
-  raw: crate::entry::Entry<'a, K, V>
-) -> Entry<'a, K, V> {
-  use crate::entry::*;
-  match raw {
-    Occupied(base) => Occupied(OccupiedEntry { base }),
-    Vacant(base) => Vacant(VacantEntry { base }),
+    self.extend(iter.into_iter().map(|&key, &value| (key, value)));
   }
 }
 
@@ -976,18 +1121,6 @@ fn map_collection_alloc_err(
       non_exhaustive: (),
     },
   }
-}
-
-#[inline]
-#[doc(hidden)]
-fn map_raw_entry<'a, K: 'a, V: 'a, S: 'a>(
-  raw: crate::entry::EntryMut<'a, K, V, S>,
-) -> EntryMut<'a, K, V, S> {
-  todo!()
-    // match raw {
-    //     base::EntryMut::Occupied(base) => EntryMut::Occupied(RawOccupiedEntryMut { base }),
-    //     base::EntryMut::Vacant(base) => EntryMut::Vacant(RawVacantEntryMut { base }),
-    // }
 }
 
 #[allow(dead_code)]
