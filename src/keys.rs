@@ -1,8 +1,8 @@
 // Copyright (c) 2019 Maia Duschatzky, Michael McCarthy, and Joseph Quinn.
 // SPDX-License-Identifier: ISC
 
-use core::fmt::{ Debug, Display, Formatter, Result as FmtResult };
-use core::iter::FusedIterator;
+use core::fmt::{ Debug, Formatter, Result as FmtResult };
+use core::iter::{ Iterator, FusedIterator };
 
 use crate::iterator::Iter;
 
@@ -13,16 +13,22 @@ use crate::iterator::Iter;
 ///
 /// [`keys`]: struct.HashMap.html#method.keys
 /// [`HashMap`]: struct.HashMap.html
-///
-/// See Also: #26925 Implemented `#[derive(Clone)]`
-#[derive(Clone)]
 pub struct Keys<'a, K: 'a, V: 'a> {
-  inner: Iter<'a, K, V>
+  pub(crate) inner: Iter<'a, K, V>
 }
 
 impl<K: Debug, V>Debug for Keys<'_, K, V> {
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_list().entries(self.clone()).finish()
+  }
+}
+
+impl<K, V> Clone for Keys<'_, K, V> {
+  #[inline]
+  fn clone(&self) -> Self {
+    Self {
+      inner: self.inner.clone()
+    }
   }
 }
 

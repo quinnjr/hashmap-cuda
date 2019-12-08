@@ -15,16 +15,22 @@ use core::{
 ///
 /// [`values`]: struct.HashMap.html#method.values
 /// [`HashMap`]: struct.HashMap.html
-///
-/// See also: #26925 added `#[derive(Clone)]`
-#[derive(Clone)]
 pub struct Values<'a, K: 'a, V: 'a> {
-  inner: Iter<'a, K, V>
+  pub(crate) inner: Iter<'a, K, V>
 }
 
 impl<K, V: Debug> Debug for Values<'_, K, V> {
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.debug_list().entries(self.clone()).finish()
+  }
+}
+
+impl<K, V> Clone for Values<'_, K, V> {
+  #[inline]
+  fn clone(&self) -> Self {
+    Self {
+      inner: self.inner.clone()
+    }
   }
 }
 
@@ -36,7 +42,7 @@ impl<K, V: Debug> Debug for Values<'_, K, V> {
 /// [`values_mut`]: struct.HashMap.html#method.values_mut
 /// [`HashMap`]: struct.HashMap.html
 pub struct ValuesMut<'a, K: 'a, V: 'a> {
-  inner: IterMut<'a, K, V>,
+  pub(crate) inner: IterMut<'a, K, V>,
 }
 
 impl<'a, K, V> Iterator for Values<'a, K, V> {

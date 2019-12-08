@@ -1,0 +1,40 @@
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+
+running 30 tests
+test insert_ahash_highbits       ... bench:      10,495 ns/iter (+/- 1,209)
+test insert_ahash_random         ... bench:      10,485 ns/iter (+/- 5,783)
+test insert_ahash_serial         ... bench:      13,012 ns/iter (+/- 1,788)
+test insert_erase_ahash_highbits ... bench:      27,594 ns/iter (+/- 4,099)
+test insert_erase_ahash_random   ... bench:      30,111 ns/iter (+/- 3,576)
+test insert_erase_ahash_serial   ... bench:      32,085 ns/iter (+/- 3,831)
+test insert_erase_std_highbits   ... bench:      53,353 ns/iter (+/- 6,967)
+test insert_erase_std_random     ... bench:      54,328 ns/iter (+/- 6,450)
+test insert_erase_std_serial     ... bench:      48,402 ns/iter (+/- 8,138)
+test insert_std_highbits         ... bench:      22,329 ns/iter (+/- 3,999)
+test insert_std_random           ... bench:      21,702 ns/iter (+/- 3,573)
+test insert_std_serial           ... bench:      19,095 ns/iter (+/- 5,133)
+test iter_ahash_highbits         ... bench:       2,053 ns/iter (+/- 209)
+test iter_ahash_random           ... bench:       2,030 ns/iter (+/- 240)
+test iter_ahash_serial           ... bench:       1,684 ns/iter (+/- 398)
+test iter_std_highbits           ... bench:       2,019 ns/iter (+/- 210)
+test iter_std_random             ... bench:       2,059 ns/iter (+/- 207)
+test iter_std_serial             ... bench:       1,676 ns/iter (+/- 457)
+test lookup_ahash_highbits       ... bench:       6,678 ns/iter (+/- 3,644)
+test lookup_ahash_random         ... bench:       6,823 ns/iter (+/- 3,416)
+test lookup_ahash_serial         ... bench:       6,755 ns/iter (+/- 453)
+test lookup_fail_ahash_highbits  ... bench:       5,504 ns/iter (+/- 605)
+test lookup_fail_ahash_random    ... bench:       6,359 ns/iter (+/- 936)
+test lookup_fail_ahash_serial    ... bench:       6,923 ns/iter (+/- 930)
+test lookup_fail_std_highbits    ... bench:      18,194 ns/iter (+/- 2,188)
+test lookup_fail_std_random      ... bench:      18,298 ns/iter (+/- 2,322)
+test lookup_fail_std_serial      ... bench:      15,519 ns/iter (+/- 1,815)
+test lookup_std_highbits         ... bench:      16,133 ns/iter (+/- 1,519)
+test lookup_std_random           ... bench:      17,783 ns/iter (+/- 4,037)
+test lookup_std_serial           ... bench:      14,973 ns/iter (+/- 1,883)
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 30 measured; 0 filtered out
+

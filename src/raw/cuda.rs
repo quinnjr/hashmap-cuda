@@ -28,7 +28,7 @@ const N: usize = 2;
 /// Number of random keys to generate.
 const GENCOUNT: usize = 30;
 /// Add some additional randomness to the generated keys.
-const RANDOMIZER: usize = 65535;
+const RANDOMIZER: u64 = 65535;
 
 /// Generate a tuple of u64 values to use as hashmap keys.
 ///
@@ -57,10 +57,14 @@ const RANDOMIZER: usize = 65535;
 /// The current `cuda` crate documentation made this function
 /// feel very hack-y. Additional optimizations may definitely
 /// be done here.
+#[must_use]
 #[inline]
 pub fn hashmap_random_keys() -> Result<(u64, u64)> {
   // Ensure that CUDA is loaded.
-  assert!(cuda_initialized()? == true);
+  match cuda_initialized() {
+    Ok(b) => assert_ne!(b, false),
+    Err(e) => panic!("{:?}", e)
+  }
   // Ensure we have a CUDA device ready.
   assert!(CudaDevice::count()? > 0);
 
@@ -68,18 +72,19 @@ pub fn hashmap_random_keys() -> Result<(u64, u64)> {
   // TODO: Change to a compile-time sized array.
   // TODO: Change to using `Result` type for error propegation.
   // TODO: Triple-check for memory leaks.
-  let keys: [u64] = unsafe {
+  let keys: &[u32] = unsafe {
     // Allocate the internal block keys to a compile-time sized array of `GENCOUNT`.
-    let keys: [u32; GENCOUNT] = [0u32; GENCOUNT];
+    let mut keys: [u32; GENCOUNT] = [0u32; GENCOUNT];
     // Create a pointer to the key array.
     let keys_ptr: *mut [u32; GENCOUNT] = &mut keys;
     // Allocate `GENCOUNT` u32's on the GPU.
-    let keys_cuda_ptr = cuda_alloc_device(GENCOUNT * mem::size_of::<u32>());
+    let keys_cuda_ptr = cuda_alloc_device(GENCOUNT * mem::size_of::<u32>())
+      .expect("Failed to allocate memory on the CUDA device");
 
     // Initialize a `cuda::rand::CurandDefaultRng` generator.
     let mut generator = match CurandDefaultRng::create() {
       Ok(g) => g,
-      Err(e) => panic!("Failed to initialize CURAND generator: {}", e)
+      Err(e) => panic!("Failed to initialize CURAND generator: {} {}", e.get_code(), e.get_name().unwrap_or(""))
     };
 
     // Seed the generator from the u64 representation of the keys pointer.
@@ -88,6 +93,8 @@ pub fn hashmap_random_keys() -> Result<(u64, u64)> {
     // Generate the random keys.
     generator.gen_u32(keys_cuda_ptr.cast::<u32>(), GENCOUNT)
       .expect("Failed to generate random numbers.");
+
+    //TODO: assert_ne! here.
 
     // Copy the CUDA memory to system memory.
     cuda_memcpy(
@@ -102,26 +109,57 @@ pub fn hashmap_random_keys() -> Result<(u64, u64)> {
     slice::from_raw_parts(keys_ptr as *mut u32, N)
   };
 
+  // Convert keys into valid u64s and multiplied by
+  // a little more randomness (arbitrarily, the maximum
+  // value of a usize).
+  let keys: &[u64; 2] = &[
+    (keys[0] as u64).wrapping_div(mem::size_of::<usize>() as u64),
+    (keys[1] as u64).wrapping_div(mem::size_of::<usize>() as u64)
+  ];
+
+  assert!(keys[0] > 0);
+  assert!(keys[1] > 0);
   // Ensure the keys are not the same value.
   // Panic if they are.
+  // TODO: move assert_ne! inside the key generation block
   assert_ne!(keys[0], keys[1],
     "The psuedorandom generator returned two keys of the same value. That really isn't very random!");
 
-  // Return a `Result` with our random keys, multiplied by
-  // a little more randomness (arbitrarily, the maximum
-  // value of a u16).
-  Ok((keys[0].wrapping_mul(RANDOMIZER), keys[1].wrapping_mul(RANDOMIZER)))
+  // Return a `Result::Ok` with our random keys.
+  //
+  // Returned tuple is conformant with prior implementation.
+  // TODO: Use a sized u64 array instead.
+  Ok((keys[0], keys[1]))
 }
 
-// Below, Swisstable implementation.
+// Below, SwissTable implementation.
 //
 // TODO: Optimize for CUDA use.
 // The below was mostly copied as-is from `hashbrown` with a
 // minimum of understanding of optimizing the hash table.
+//
+// TODO: Optimization for use with CUDA.
+
+// Use the native word size as the group size. Using a 64-bit group size on
+// a 32-bit architecture will just end up being more expensive because
+// shifts and multiplies will need to be emulated.
+#[cfg(any(
+    target_pointer_width = "64",
+    target_arch = "aarch64",
+    target_arch = "x86_64",
+))]
 type GroupWord = u64;
+#[cfg(all(
+    target_pointer_width = "32",
+    not(target_arch = "aarch64"),
+    not(target_arch = "x86_64"),
+))]
+type GroupWord = u32;
+
 pub type BitMaskWord = GroupWord;
-pub const BITMASK_STRIDE: usize = 1;
-pub const BITMASK_MASK: BitMaskWord = 0xffff;
+pub const BITMASK_STRIDE: usize = 8;
+#[allow(clippy::cast_possible_truncation, clippy::unnecessary_cast)]
+pub const BITMASK_MASK: BitMaskWord = 0x8080_8080_8080_8080_u64 as GroupWord;
 
 /// Helper function to replicate a byte across a `GroupWord`.
 #[inline]

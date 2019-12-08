@@ -1,16 +1,15 @@
-// Copyright (c) 2019 Maia Duschatzky, Michael McCarthy, and Joseph Quinn.
-// SPDX-License-Identifier: ISC
+//! RandomState modified from `std::collections`.
+//!
+//! See:
+
+use core::{
+  hash::BuildHasher,
+  fmt::{ Debug, Formatter, Result as FmtResult }
+};
 
 use crate::{
   hasher::DefaultHasher,
-  raw
-};
-
-#[allow(deprecated)]
-use core::{
-  cell::Cell,
-  fmt::{ Debug, Display, Formatter, Result as FmtResult },
-  hash::{ BuildHasher, SipHasher }
+  external::SipHasher13
 };
 
 /// `RandomState` is the default state for [`HashMap`] types.
@@ -49,10 +48,12 @@ impl RandomState {
   ///
   /// let s = RandomState::new();
   /// ```
-  #[allow(deprecated)]
-  #[feature(std)] //TODO: CUDA rng?
+  #[inline]
   pub fn new() -> Self {
-    let keys: (u64, u64) = raw::cuda::hashmap_random_keys().unwrap();
+    let keys: (u64, u64) = crate::raw::cuda::hashmap_random_keys().unwrap();
+    assert_ne!(keys.0, 0);
+    assert_ne!(keys.1, 0);
+    assert_ne!(keys.0, keys.1);
 
     Self { k0: keys.0, k1: keys.1 }
   }
@@ -60,12 +61,14 @@ impl RandomState {
 
 impl Default for RandomState {
   /// Constructs a new `RandomState`.
+  #[inline]
   fn default() -> Self {
     RandomState::new()
   }
 }
 
 impl Debug for RandomState {
+  #[inline]
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
     f.pad("RandomState { .. }")
   }
@@ -73,8 +76,8 @@ impl Debug for RandomState {
 
 impl BuildHasher for RandomState {
   type Hasher = DefaultHasher;
-  #[allow(deprecated)]
+  #[inline]
   fn build_hasher(&self) -> DefaultHasher {
-    DefaultHasher(SipHasher::new_with_keys(self.k0, self.k1))
+    DefaultHasher(SipHasher13::new_with_keys(self.k0, self.k1))
   }
 }

@@ -13,12 +13,13 @@ use core::{
 use crate::{
   alloc::alloc::{ alloc, dealloc, handle_alloc_error },
   error::CollectionAllocErr,
-  result::Result,
-  scopeguard::guard
+  external::scopeguard::guard,
+  result::Result
 };
 
-// TODO: Consider replacing with `bitmask` crate.
+// TODO: consider substitution of `bitmask` crate
 pub(crate) mod bitmask;
+#[path = "cuda.rs"]
 pub(crate) mod cuda;
 
 use self::bitmask::BitMask;
@@ -27,6 +28,8 @@ use self::bitmask::BitMask;
 use self::cuda as imp;
 use self::imp::Group;
 
+// Branch prediction hint. This is currently only available on nightly but it
+// consistently improves performance by 10-15%.
 cfg_if::cfg_if! {
   if #[cfg(feature = "nightly")] {
     use ::core::intrinsics::{ likely, unlikely };
@@ -265,8 +268,6 @@ pub struct Bucket<T> {
     ptr: *const T
 }
 
-// This Send impl is needed for rayon support.
-// This is safe since Bucket is never exposed in a public API.
 unsafe impl<T> Send for Bucket<T> {}
 
 impl<T> Clone for Bucket<T> {
@@ -307,33 +308,39 @@ impl<T> Bucket<T> {
     Self { ptr }
   }
 
+  #[inline]
   pub unsafe fn drop(&self) {
     self.as_ptr().drop_in_place();
   }
 
+  #[inline]
   pub unsafe fn read(&self) -> T {
     self.as_ptr().read()
   }
 
+  #[inline]
   pub unsafe fn write(&self, val: T) {
     self.as_ptr().write(val);
   }
 
+  #[inline]
   pub unsafe fn as_ref<'a>(&self) -> &'a T {
     &*self.as_ptr()
   }
 
+  #[inline]
   pub unsafe fn as_mut<'a>(&self) -> &'a mut T {
     &mut *self.as_ptr()
   }
 
+  #[inline]
   pub unsafe fn copy_from_nonoverlapping(&self, other: &Self) {
     self.as_ptr().copy_from_nonoverlapping(other.as_ptr(), 1);
   }
 }
 
 /// A raw hash table with an unsafe API.
-pub struct Table<T> {
+pub struct RawTable<T> {
   /// Mask to get an index from a hash value.
   /// The value is one less than the
   /// number of buckets in the table.
@@ -351,22 +358,19 @@ pub struct Table<T> {
   marker: PhantomData<T>
 }
 
-impl<T> Table<T> {
+impl<T> RawTable<T> {
   /// Creates a new empty hash table without allocating any memory.
   ///
   /// In effect this returns a table with exactly 1 bucket.
   /// However we can leave the data pointer dangling since
   /// that bucket is never written to due to our load factor
   /// forcing us to always have at least 1 free bucket.
+  #[inline]
   pub fn new() -> Self {
     Self {
       data: NonNull::dangling(),
       // Be careful to cast the entire slice to a raw pointer.
-      ctrl: unsafe {
-        NonNull::new_unchecked(
-          Group::static_empty().as_ptr() as *mut u8
-        )
-      },
+      ctrl: unsafe { NonNull::new_unchecked(Group::static_empty().as_ptr() as *mut u8) },
       bucket_mask: 0,
       items: 0,
       growth_left: 0,
@@ -377,6 +381,7 @@ impl<T> Table<T> {
   /// Allocates a new hash table with the given number of buckets.
   ///
   /// The control bytes are left uninitialized.
+  #[inline]
   unsafe fn new_uninitialized(
     buckets: usize,
     fallability: Fallibility,
@@ -420,12 +425,14 @@ impl<T> Table<T> {
   /// Allocates a new hash table with at least enough capacity
   /// for inserting the given number of elements without
   /// reallocating.
+  #[inline]
   pub fn with_capacity(capacity: usize) -> Self {
     Self::try_with_capacity(capacity, Fallibility::Infallible)
       .unwrap_or_else(|_| unsafe { hint::unreachable_unchecked() })
   }
 
   /// Deallocates the table without dropping any entries.
+  #[inline]
   unsafe fn free_buckets(&mut self) {
     let (layout, _) =          calculate_layout::<T>(self.buckets())
       .unwrap_or_else(|| hint::unreachable_unchecked());
@@ -433,6 +440,7 @@ impl<T> Table<T> {
   }
 
   /// Returns the index of a bucket from a `Bucket`.
+  #[inline]
   pub unsafe fn bucket_index(&self, bucket: &Bucket<T>) -> usize {
     if mem::size_of::<T>() == 0 {
       bucket.ptr as usize
@@ -442,12 +450,14 @@ impl<T> Table<T> {
   }
 
   /// Returns a pointer to a control byte.
+  #[inline]
   unsafe fn ctrl(&self, index: usize) -> *mut u8 {
     debug_assert!(index < self.num_ctrl_bytes());
     self.ctrl.as_ptr().add(index)
   }
 
   /// Returns a pointer to an element in the table.
+  #[inline]
   pub unsafe fn bucket(&self, index: usize) -> Bucket<T> {
     debug_assert_ne!(self.bucket_mask, 0);
     debug_assert!(index < self.buckets());
@@ -455,6 +465,7 @@ impl<T> Table<T> {
   }
 
   /// Erases an element from the table without dropping it.
+  #[inline]
   pub unsafe fn erase_no_drop(&mut self, item: &Bucket<T>) {
     let index = self.bucket_index(item);
     debug_assert!(is_full(*self.ctrl(index)));
@@ -488,6 +499,7 @@ impl<T> Table<T> {
   /// This iterator never terminates, but is guaranteed to visit
   // each bucket group exactly once. The loop using `probe_seq`
   // must terminate upon reaching a group containing an empty bucket.
+  #[inline]
   fn probe_seq(&self, hash: u64) -> ProbeSeq {
     ProbeSeq {
       bucket_mask: self.bucket_mask,
@@ -498,6 +510,7 @@ impl<T> Table<T> {
 
   /// Sets a control byte, and possibly also the replicated control
   /// byte at the end of the array.
+  #[inline]
   unsafe fn set_ctrl(&self, index: usize, ctrl: u8) {
     // Replicate the first Group::WIDTH control bytes at the end of
     // the array without using a branch:
@@ -628,9 +641,7 @@ impl<T> Table<T> {
     /// Ensures that at least `additional` items can be inserted
     /// into the table without reallocation.
     #[inline]
-    pub fn reserve(&mut self, additional: usize,
-      hasher: impl Fn(&T) -> u64)
-    {
+    pub fn reserve(&mut self, additional: usize, hasher: impl Fn(&T) -> u64) {
       if additional > self.growth_left {
         self.reserve_rehash(additional, hasher, Fallibility::Infallible)
           .unwrap_or_else(|_| unsafe {
@@ -641,12 +652,11 @@ impl<T> Table<T> {
 
     /// Tries to ensure that at least `additional` items can be
     /// inserted into the table without reallocation.
+    #[must_use]
     #[inline]
-    pub fn try_reserve(
-        &mut self,
-        additional: usize,
-        hasher: impl Fn(&T) -> u64,
-    ) -> Result<()> {
+    pub fn try_reserve(&mut self, additional: usize, hasher: impl Fn(&T) -> u64)
+      -> Result
+    {
       if additional > self.growth_left {
         self.reserve_rehash(additional, hasher, Fallibility::Fallible)
       } else {
@@ -656,13 +666,11 @@ impl<T> Table<T> {
 
     /// Out-of-line slow path for `reserve` and `try_reserve`.
     #[cold]
+    #[must_use]
     #[inline(never)]
-    fn reserve_rehash(
-        &mut self,
-        additional: usize,
-        hasher: impl Fn(&T) -> u64,
-        fallability: Fallibility,
-    ) -> Result<()> {
+    fn reserve_rehash(&mut self, additional: usize, hasher: impl Fn(&T) -> u64,
+      fallability: Fallibility) -> Result
+    {
       let new_items = self
         .items
         .checked_add(additional)
@@ -788,13 +796,10 @@ impl<T> Table<T> {
 
   /// Allocates a new table of a different size and moves the contents of the
   /// current table into it.
-  #[inline]
-  fn resize(
-    &mut self,
-    capacity: usize,
-    hasher: impl Fn(&T) -> u64,
-    fallability: Fallibility,
-  ) -> Result<()> {
+  #[must_use]
+  fn resize(&mut self, capacity: usize,hasher: impl Fn(&T) -> u64,
+    fallability: Fallibility) -> Result
+  {
     unsafe {
       debug_assert!(self.items <= capacity);
       // Allocate and initialize the new table.
@@ -869,12 +874,15 @@ impl<T> Table<T> {
   ///
   /// This does not check if the given element already exists in the table.
   #[inline]
-  #[cfg(feature = "rustc-internal-api")]
   pub fn insert_no_grow(&mut self, hash: u64, value: T)
     -> Bucket<T>
   {
     unsafe {
-      let index = self.find_insert_slot(hash);
+      #[cfg(debug_assertions)]
+      debug_assert_ne!(hash, 0);
+      let mut index = self.find_insert_slot(hash);
+      // TODO: Fix edge case where index can be zero
+      debug_assert_ne!(index, 0);
       let bucket = self.bucket(index);
       // If we are replacing a DELETED entry then we don't need to update
       // the load counter.
@@ -989,10 +997,10 @@ impl<T> Table<T> {
   }
 }
 
-unsafe impl<T> Send for Table<T> where T: Send {}
-unsafe impl<T> Sync for Table<T> where T: Sync {}
+unsafe impl<T> Send for RawTable<T> where T: Send {}
+unsafe impl<T> Sync for RawTable<T> where T: Sync {}
 
-impl<T: Clone> Clone for Table<T> {
+impl<T: Clone> Clone for RawTable<T> {
   fn clone(&self) -> Self {
     if self.is_empty_singleton() {
       Self::new()
@@ -1045,7 +1053,7 @@ impl<T: Clone> Clone for Table<T> {
 }
 
 #[cfg(feature = "nightly")]
-unsafe impl<#[may_dangle] T> Drop for Table<T> {
+unsafe impl<#[may_dangle] T> Drop for RawTable<T> {
   fn drop(&mut self) {
     if !self.is_empty_singleton() {
       unsafe {
@@ -1061,7 +1069,7 @@ unsafe impl<#[may_dangle] T> Drop for Table<T> {
 }
 
 #[cfg(not(feature = "nightly"))]
-impl<T> Drop for Table<T> {
+impl<T> Drop for RawTable<T> {
   fn drop(&mut self) {
     if !self.is_empty_singleton() {
       unsafe {
@@ -1076,7 +1084,7 @@ impl<T> Drop for Table<T> {
   }
 }
 
-impl<T> IntoIterator for Table<T> {
+impl<T> IntoIterator for RawTable<T> {
   type Item = T;
   type IntoIter = RawIntoIter<T>;
 
@@ -1093,6 +1101,12 @@ impl<T> IntoIterator for Table<T> {
     }
   }
 }
+
+// impl<T> AsMut<RawTable<T>> for RawTable<T> {
+//   // fn as_mut(&mut self) -> &mut RawTable<T> {
+//   //   (*self)
+//   // }
+// }
 
 /// Iterator over a sub-range of a table. Unlike `RawIter` this iterator does
 /// not track an item count.
@@ -1114,8 +1128,7 @@ impl<T> RawIterRange<T> {
   ///
   /// The control byte address must be aligned to the group size.
   #[inline]
-  unsafe fn new(ctrl: *const u8, data: Bucket<T>, len: usize)
-    -> Self
+  unsafe fn new(ctrl: *const u8, data: Bucket<T>, len: usize) -> Self
   {
     debug_assert_ne!(len, 0);
     debug_assert_eq!(ctrl as usize % Group::WIDTH, 0);
@@ -1137,6 +1150,8 @@ impl<T> RawIterRange<T> {
   ///
   /// Returns `None` if the remaining range is smaller than or equal to the
   /// group width.
+  ///
+  /// TODO: Can be removed since we are not incorporating Rayon?
   #[inline]
   pub(crate) fn split(mut self) -> (Self, Option<RawIterRange<T>>) {
     unsafe {
@@ -1193,6 +1208,7 @@ impl<T> Clone for RawIterRange<T> {
 
 impl<T> Iterator for RawIterRange<T> {
   type Item = Bucket<T>;
+
   #[inline]
   fn next(&mut self) -> Option<Bucket<T>> {
     unsafe {
@@ -1351,11 +1367,11 @@ pub struct RawDrain<'a, T> {
   // The table is moved into the iterator for the duration of the
   // drain. This ensures that an empty table is left if the drain
   // iterator is leaked without dropping.
-  table: ManuallyDrop<Table<T>>,
-  orig_table: NonNull<Table<T>>,
+  table: ManuallyDrop<RawTable<T>>,
+  orig_table: NonNull<RawTable<T>>,
   // We don't use a &'a mut Table<T> because we want RawDrain to be
   // covariant over T.
-  marker: PhantomData<&'a Table<T>>
+  marker: PhantomData<&'a RawTable<T>>
 }
 
 impl<T> RawDrain<'_, T> {

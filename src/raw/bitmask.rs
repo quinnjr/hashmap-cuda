@@ -1,9 +1,11 @@
-// Copied from https://github.com/rust-lang/hashbrown/blob/master/src/raw/bitmask.rs
-// Authors do not exert copyright over this file.
-// All prior art contained herein is the work of the implementors
-// of [`hashbrown`](https://github.com/rust-lang/hashbrown)
-
+//! Copied from https://github.com/rust-lang/hashbrown/blob/master/src/raw/bitmask.rs
+//! Authors do not exert copyright over this file.
+//! All prior art contained herein is the work of the implementors
+//! of [`hashbrown`](https://github.com/rust-lang/hashbrown)
+//!
 //! See: [`hashbrown::raw::bitmask`](https://github.com/rust-lang/hashbrown/blob/master/src/raw/bitmask.rs)
+//!
+//! TODO: consider replacing with [`bitmask`](https://crates.io/crates/bitmask)
 
 use super::cuda::{ BitMaskWord, BITMASK_MASK, BITMASK_STRIDE };
 

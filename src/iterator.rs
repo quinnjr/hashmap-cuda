@@ -1,8 +1,15 @@
 // Copyright (c) 2019 Maia Duschatzky, Michael McCarthy, and Joseph Quinn.
 // SPDX-License-Identifier: ISC
 
-use core::fmt::{ Debug, Display, Formatter, Result as FmtResult };
-use core::iter::FusedIterator;
+use core::{
+  fmt::{ Debug, Formatter, Result as FmtResult },
+  iter::FusedIterator,
+  marker::PhantomData
+};
+
+use crate::{
+  raw::{ RawDrain, RawIter, RawIntoIter }
+};
 
 /// An iterator over the entries of a `HashMap`.
 ///
@@ -11,18 +18,53 @@ use core::iter::FusedIterator;
 ///
 /// [`iter`]: struct.HashMap.html#method.iter
 /// [`HashMap`]: struct.HashMap.html
-///
-/// See Also: #26925 (Added `#[derive(Clone)]` instead of `Clone` impl)
-#[derive(Clone)]
 pub struct Iter<'a, K: 'a, V: 'a> {
-  // // base: base::Iter<'a, K, V>,
+  pub(crate) inner: RawIter<(K, V)>,
+  pub(crate) marker: PhantomData<(&'a K, &'a V)>
+}
+
+// FIXME(#26925) Remove in favor of `#[derive(Clone)]`
+impl<K, V> Clone for Iter<'_, K, V> {
+  #[inline]
+  fn clone(&self) -> Self {
+    Self {
+      inner: self.inner.clone(),
+      marker: PhantomData
+    }
+  }
 }
 
 impl<K: Debug, V: Debug> Debug for Iter<'_, K, V> {
   fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-    todo!()
+    f.debug_list().entries(self.clone()).finish()
   }
 }
+
+impl<'a, K, V> Iterator for Iter<'a, K, V> {
+  type Item = (&'a K, &'a V);
+
+  #[inline]
+  fn next(&mut self) -> Option<(&'a K, &'a V)> {
+    self.inner.next().map(|x| unsafe {
+      let r = x.as_ref();
+      (&r.0, &r.1)
+    })
+  }
+  #[inline]
+  fn size_hint(&self) -> (usize, Option<usize>) {
+    self.inner.size_hint()
+  }
+}
+
+impl<K, V> ExactSizeIterator for Iter<'_, K, V> {
+  #[inline]
+  fn len(&self) -> usize {
+    self.inner.len()
+  }
+}
+
+impl<K, V> FusedIterator for Iter<'_, K, V> {}
+
 
 /// A mutable iterator over the entries of a `HashMap`.
 ///
@@ -32,13 +74,39 @@ impl<K: Debug, V: Debug> Debug for Iter<'_, K, V> {
 /// [`iter_mut`]: struct.HashMap.html#method.iter_mut
 /// [`HashMap`]: struct.HashMap.html
 pub struct IterMut<'a, K: 'a, V: 'a> {
-  // // base: base::IterMut<'a, K, V>
+  pub(crate) inner: RawIter<(K, V)>,
+  pub(crate) marker: PhantomData<(&'a K, &'a mut V)>
 }
+
+/// We override the default Send impl which has K: Sync instead of K: Send. Both
+/// are correct, but this one is more general since it allows keys which
+/// implement Send but not Sync.
+unsafe impl<K: Send, V: Send> Send for IterMut<'_, K, V> {}
 
 impl<'a, K, V> IterMut<'a, K, V> {
   /// Returns a iterator of references over the remaining items.
+  #[inline]
   pub(super) fn iter(&self) -> Iter<'_, K, V> {
-    todo!()
+    Iter {
+      inner: self.inner.clone(),
+      marker: PhantomData
+    }
+  }
+}
+
+impl<'a, K, V> Iterator for IterMut<'a, K, V> {
+  type Item = (&'a K, &'a mut V);
+
+  #[inline]
+  fn next(&mut self) -> Option<(&'a K, &'a mut V)> {
+    self.inner.next().map(|x| unsafe {
+      let r = x.as_mut();
+      (&r.0, &mut r.1)
+    })
+  }
+  #[inline]
+  fn size_hint(&self) -> (usize, Option<usize>) {
+    self.inner.size_hint()
   }
 }
 
@@ -51,13 +119,17 @@ impl<'a, K, V> IterMut<'a, K, V> {
 /// [`into_iter`]: struct.HashMap.html#method.into_iter
 /// [`HashMap`]: struct.HashMap.html
 pub struct IntoIter<K, V> {
-  // // base: base::IntoIter<K, V>,
+  pub(crate) inner: RawIntoIter<(K, V)>
 }
 
 impl<K, V> IntoIter<K, V> {
   /// Returns a iterator of references over the remaining items.
+  #[inline]
   pub(super) fn iter(&self) -> Iter<'_, K, V> {
-    todo!()
+    Iter {
+      inner: self.inner.iter(),
+      marker: PhantomData
+    }
   }
 }
 
@@ -69,51 +141,24 @@ impl<K, V> IntoIter<K, V> {
 /// [`drain`]: struct.HashMap.html#method.drain
 /// [`HashMap`]: struct.HashMap.html
 pub struct Drain<'a, K: 'a, V: 'a> {
-  // // base: base::Drain<'a, K, V>,
+  pub(crate) inner: RawDrain<'a, (K, V)>
 }
 
 impl<'a, K, V> Drain<'a, K, V> {
   /// Returns a iterator of references over the remaining items.
+  #[inline]
   pub(super) fn iter(&self) -> Iter<'_, K, V> {
-    todo!()
-  }
-}
-
-impl<'a, K, V> Iterator for Iter<'a, K, V> {
-  type Item = (&'a K, &'a V);
-
-  fn next(&mut self) -> Option<(&'a K, &'a V)> {
-    todo!()
-  }
-
-  fn size_hint(&self) -> (usize, Option<usize>) {
-    todo!()
-  }
-}
-
-impl<K, V> ExactSizeIterator for Iter<'_, K, V> {
-  fn len(&self) -> usize {
-    todo!()
-  }
-}
-
-impl<K, V> FusedIterator for Iter<'_, K, V> {}
-
-impl<'a, K, V> Iterator for IterMut<'a, K, V> {
-  type Item = (&'a K, &'a mut V);
-
-  fn next(&mut self) -> Option<(&'a K, &'a mut V)> {
-    todo!()
-  }
-
-  fn size_hint(&self) -> (usize, Option<usize>) {
-    todo!()
+    Iter {
+      inner: self.inner.iter(),
+      marker: PhantomData
+    }
   }
 }
 
 impl<K, V> ExactSizeIterator for IterMut<'_, K, V> {
+  #[inline]
   fn len(&self) -> usize {
-    todo!()
+    self.inner.len()
   }
 }
 
@@ -130,12 +175,14 @@ impl<K, V> Debug for IterMut<'_, K, V>
 impl<K, V> Iterator for IntoIter<K, V> {
   type Item = (K, V);
 
+  #[inline]
   fn next(&mut self) -> Option<(K, V)> {
-    todo!()
+    self.inner.next()
   }
 
+  #[inline]
   fn size_hint(&self) -> (usize, Option<usize>) {
-    todo!()
+    self.inner.size_hint()
   }
 }
 
@@ -156,18 +203,19 @@ impl<K: Debug, V: Debug> Debug for IntoIter<K, V> {
 impl<'a, K, V> Iterator for Drain<'a, K, V> {
   type Item = (K, V);
 
+  #[inline]
   fn next(&mut self) -> Option<(K, V)> {
-    todo!()
+    self.inner.next()
   }
 
   fn size_hint(&self) -> (usize, Option<usize>) {
-    todo!()
+    self.inner.size_hint()
   }
 }
 
 impl<K, V> ExactSizeIterator for Drain<'_, K, V> {
   fn len(&self) -> usize {
-    todo!()
+    self.inner.len()
   }
 }
 

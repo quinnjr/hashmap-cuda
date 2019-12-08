@@ -13,16 +13,16 @@ license = "ISC"
 keywords = [
   "hash", "hashmap", "data", "structure", "cuda", "parallel"
 ]
-exclude = [ "project/", "playground" ]
+exclude = [ "project/", ".travis.yml", "ci/" ]
 build = "build.rs"
+
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+features = ["nightly", "std"]
 
 [badges]
 is-it-maintained-issue-resolution = { repository = "quinnjr/hashmap-cuda" }
 maintenance = { status = "actively-developed" }
-
-[package.metadata.docs.rs]
-default-target = "x86_64-unknown-linux-gnu"
-features = ["nightly"]
 
 [dependencies]
 cfg-if = "0.1.10"
@@ -57,6 +57,8 @@ features = [ "cuda_10_1" ]
 [dev-dependencies]
 clippy = "0.0.302"
 rustc-hash = "1.0.1"
+rand = "0.5.1"
+lazy_static = "1.4.0"
 
 [build-dependencies]
 autocfg = "0.1.7"

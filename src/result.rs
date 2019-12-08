@@ -1,8 +1,7 @@
 // Copyright (c) 2019 Maia Duschatzky, Michael McCarthy, and Joseph Quinn.
 // SPDX-License-Identifier: ISC
 
-use crate::error::Error;
-use core::convert::Into;
+use crate::error::ErrorKind;
 
 /// `Result` type for the `hashmap-cuda` crate.
 ///
@@ -10,7 +9,7 @@ use core::convert::Into;
 /// If no T is specified, T is a unit type.
 ///
 /// Converts all Errors returned by `Result::Err` into the
-/// crate [`Error`] enum.
+/// crate [`ErrorKind`] enum.
 ///
-/// [`Error`]: enum.Error.html
-pub type Result<T=()> = ::core::result::Result<T, Error>;
+/// [`ErrorKind`]: enum.ErrorKind.html
+pub type Result<T=()> = ::core::result::Result<T, ErrorKind>;
