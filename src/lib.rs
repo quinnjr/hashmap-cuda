@@ -29,6 +29,7 @@
 //! [3]: https://docs.rs/hashbrown/0.6.3/hashbrown/struct.HashMap.html
 
 #![cfg_attr(not(feature = "std"), no_std)]
+#![allow(deprecated)]
 
 #![feature(try_reserve, hashmap_internals)]
 
@@ -74,6 +75,7 @@
 ))]
 compile_error!("CUDA compilation is not known to be supported on this platform.");
 
+// Core `rust` imports
 use core::{
   borrow::Borrow,
   default::Default,
@@ -85,19 +87,23 @@ use core::{
   ops::Index
 };
 
+// Internal modules
 mod entry;
-mod external;
 mod hasher;
 mod iterator;
 mod keys;
-mod raw;
 mod values;
 
 /// Error module.
 pub mod error;
+/// External module
+pub mod external;
+// Raw module
+pub mod raw;
 /// Result module.
 pub mod result;
 
+// Crate exports
 pub use crate::{
   entry::{
     Entry, EntryMut, EntryBuilder, EntryBuilderMut,
@@ -131,7 +137,8 @@ use cuda::{ driver, runtime };
 ///
 /// If no valid runtime can be found, the `HashMap` will panic.
 ///
-/// TODO: Shift `preflight()` into a macro? Compile-time macro?
+/// TODO: Shift `preflight()` into a macro?
+/// TODO: Compile-time constant?
 #[must_use]
 #[inline]
 fn preflight() -> Result {
@@ -228,13 +235,14 @@ impl<K, V> HashMap<K, V, DefaultHashBuilder> {
   /// # Examples
   ///
   /// ```
-  /// use hashmap-cuda::HashMap;
+  /// use hashmap_cuda::HashMap;
   /// let mut map: HashMap<&str, i64> = HashMap::new();
   /// ```
   ///
   /// # Panics
   ///
-  /// If no valid runtime can be found, an early panic exits the application.
+  /// If no valid runtime can be found, an early panic exits the
+  /// application.
   pub fn new() -> Self {
     match preflight() {
       Ok(_) => Self::with_hasher(DefaultHashBuilder::default()),
@@ -247,7 +255,7 @@ impl<K, V> HashMap<K, V, DefaultHashBuilder> {
   /// # Examples
   ///
   /// ```
-  /// use hashmap-cuda::HashMap;
+  /// use hashmap_cuda::HashMap;
   /// let mut map: HashMap<&str, i64> = HashMap::with_capacity(100);
   /// ```
   ///
@@ -275,7 +283,7 @@ impl<K, V, S> HashMap<K, V, S> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::{ HashMap, RandomState };
   ///
   /// let s = RandomState::new();
@@ -310,7 +318,7 @@ impl<K, V, S> HashMap<K, V, S> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   /// use hashmap_cude::RandomState;
   ///
@@ -339,7 +347,7 @@ impl<K, V, S> HashMap<K, V, S> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   /// use hashmap_cuda::RandomState;
   ///
@@ -356,10 +364,11 @@ impl<K, V, S> HashMap<K, V, S> {
   /// This number is a lower bound; the `HashMap<K, V>` might be able to hold
   /// more, but is guaranteed to be able to hold at least this many.
   ///
-  /// `/// use hashmap-cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   /// let mut map: HashMap<&str, i64> = HashMap::with_capacity(100);
   /// assert!(map.capacity() >= 100);
-  ///`
+  /// ```
   pub fn capacity(&self) -> usize {
     self.table.capacity()
   }
@@ -579,7 +588,7 @@ impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut letters = HashMap::new();
@@ -656,7 +665,8 @@ impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<i32, i32> = HashMap::with_capacity(100);
   /// map.insert(1, 2);
@@ -664,7 +674,7 @@ impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// assert!(map.capacity() >= 100);
   /// map.shrink_to_fit();
   /// assert!(map.capacity() >= 2);
-  ///`
+  /// ```
   pub fn shrink_to_fit(&mut self) {
     let hash_builder = &self.hash_builder;
     self.table.shrink_to(0, |x| make_hash(hash_builder, &x.0));
@@ -679,7 +689,8 @@ impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// `/// #![feature(shrink_to)]
+  /// ```
+  /// #![feature(shrink_to)]
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<i32, i32> = HashMap::with_capacity(100);
@@ -690,7 +701,7 @@ impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// assert!(map.capacity() >= 10);
   /// map.shrink_to(0);
   /// assert!(map.capacity() >= 2);
-  ///`
+  /// ````
   pub fn shrink_to(&mut self, min_capacity: usize) {
     assert!(
       self.capacity() >= min_capacity,
@@ -704,7 +715,7 @@ impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut letters = HashMap::new();
@@ -928,7 +939,8 @@ impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   ///
   /// # Examples
   ///
-  /// `/// use hashmap_cuda::HashMap;
+  /// ```
+  /// use hashmap_cuda::HashMap;
   ///
   /// # fn main() {
   /// let mut map = HashMap::new();
@@ -936,7 +948,7 @@ impl<K, V, S> HashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
   /// assert_eq!(map.remove_entry(&1), Some((1, "a")));
   /// assert_eq!(map.remove(&1), None);
   /// # }
-  ///`
+  /// ```
   pub fn remove_entry<Q: ?Sized>(&mut self, k: &Q) -> Option<(K, V)>
     where K: Borrow<Q>, Q: Hash + Eq
   {
@@ -1279,7 +1291,7 @@ mod test {
   use super::*;
   use super::Entry::{ Occupied, Vacant };
   #[cfg(not(miri))]
-  use crate::error::CollectionAllocErr::*;
+  // use crate::error::CollectionAllocErr::*;
   use rand::{rngs::SmallRng, Rng, SeedableRng};
   #[cfg(feature = "std")]
   use std::cell::RefCell;

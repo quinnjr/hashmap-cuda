@@ -20,11 +20,11 @@ use crate::{
 /// produce the same result for the same values.
 ///
 /// [`HashMap`]: struct.HashMap.html
-/// [`Hasher`]: ../../hash/trait.Hasher.html
+/// [`Hasher`]: https://doc.rust-lang.org/src/core/hash/trait.Hasher.html
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use hashmap_cuda::{ HashMap, RandomState };
 ///
 /// let s = RandomState::new();
@@ -43,8 +43,8 @@ impl RandomState {
   ///
   /// # Examples
   ///
-  /// ```
-  /// use hashmap_cude::RandomState;
+  /// ```ignore
+  /// use hashmap_cuda::RandomState;
   ///
   /// let s = RandomState::new();
   /// ```

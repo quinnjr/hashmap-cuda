@@ -70,3 +70,6 @@ std = []
 nightly = []
 rustc-internal-api = []
 rustc-dep-of-std = ["nightly", "core", "compiler_builtins", "alloc", "rustc-internal-api"]
+
+[target."nvptx64-nvidia-cuda".profile.dev]
+debug = false

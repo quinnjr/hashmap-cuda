@@ -20,7 +20,7 @@ use crate::{
 // TODO: consider substitution of `bitmask` crate
 pub(crate) mod bitmask;
 #[path = "cuda.rs"]
-pub(crate) mod cuda;
+pub mod cuda;
 
 use self::bitmask::BitMask;
 // Drop-in replacement of `generic` and `sse2` implementations

@@ -27,8 +27,8 @@ use core::{
 const N: usize = 2;
 /// Number of random keys to generate.
 const GENCOUNT: usize = 30;
-/// Add some additional randomness to the generated keys.
-const RANDOMIZER: u64 = 65535;
+/// Add a little additional randomness
+const RAND: usize = 65535;
 
 /// Generate a tuple of u64 values to use as hashmap keys.
 ///
@@ -43,20 +43,34 @@ const RANDOMIZER: u64 = 65535;
 /// # Panic
 /// Problems in the CUDA driver will cause the program to panic early.
 ///
-/// Improper randomization of keys will cause a panic. We want randomization!
+/// Improper randomization of keys will cause a panic.
+/// We want randomization!
 ///
 /// # TODO
 /// More psuedorandom selection of the final two hash keys.
 /// More optimizations.
 /// Convert to raw C and use ffi??
 ///
-/// Frankly, Jospeh believes the hashmap key randomomization might
+/// Jospeh believes the hashmap key randomomization might
 /// benefit from being written in C and the returned values then
 /// being consumed in the Rust library.
 ///
 /// The current `cuda` crate documentation made this function
 /// feel very hack-y. Additional optimizations may definitely
 /// be done here.
+///
+/// # Examples
+///
+/// ```text
+/// use hashmap_cuda::raw::cuda::hashmap_random_keys;
+///
+/// let (key1, key2) = hashmap_random_keys()
+///   .expect("Failed to generate random keys");
+///
+/// assert_ne!(key1, 0);
+/// assert_ne!(key2, 0);
+/// assert_ne!(key1, key2);
+/// ```
 #[must_use]
 #[inline]
 pub fn hashmap_random_keys() -> Result<(u64, u64)> {
@@ -66,12 +80,13 @@ pub fn hashmap_random_keys() -> Result<(u64, u64)> {
     Err(e) => panic!("{:?}", e)
   }
   // Ensure we have a CUDA device ready.
-  assert!(CudaDevice::count()? > 0);
+  debug_assert!(CudaDevice::count()? > 0);
 
   // Keys generation inside an unsafe block
   // TODO: Change to a compile-time sized array.
   // TODO: Change to using `Result` type for error propegation.
   // TODO: Triple-check for memory leaks.
+  // TODO: Compile-time key generation from CUDA?
   let keys: &[u32] = unsafe {
     // Allocate the internal block keys to a compile-time sized array of `GENCOUNT`.
     let mut keys: [u32; GENCOUNT] = [0u32; GENCOUNT];
@@ -113,16 +128,16 @@ pub fn hashmap_random_keys() -> Result<(u64, u64)> {
   // a little more randomness (arbitrarily, the maximum
   // value of a usize).
   let keys: &[u64; 2] = &[
-    (keys[0] as u64).wrapping_div(mem::size_of::<usize>() as u64),
-    (keys[1] as u64).wrapping_div(mem::size_of::<usize>() as u64)
+    (keys[0] as u64).wrapping_add(RAND as u64),
+    (keys[1] as u64).wrapping_add(RAND as u64)
   ];
 
-  assert!(keys[0] > 0);
-  assert!(keys[1] > 0);
+  debug_assert!(keys[0] > 0);
+  debug_assert!(keys[1] > 0);
   // Ensure the keys are not the same value.
   // Panic if they are.
   // TODO: move assert_ne! inside the key generation block
-  assert_ne!(keys[0], keys[1],
+  debug_assert_ne!(keys[0], keys[1],
     "The psuedorandom generator returned two keys of the same value. That really isn't very random!");
 
   // Return a `Result::Ok` with our random keys.

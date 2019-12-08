@@ -44,7 +44,7 @@ impl<'a, K, V> Entry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
@@ -69,7 +69,7 @@ impl<'a, K, V> Entry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
@@ -94,7 +94,7 @@ impl<'a, K, V> Entry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<&str, String> = HashMap::new();
@@ -137,7 +137,7 @@ impl<'a, K, V> Entry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
@@ -171,7 +171,7 @@ impl<'a, K, V: Default> Entry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// # fn main() {
   /// use hashmap_cuda::HashMap;
   ///
@@ -266,8 +266,7 @@ impl<'a, K, V, S> EntryMut<'a, K, V, S> {
   ///
   /// # Examples
   ///
-  /// ```
-  /// #![feature(hash_raw_entry)]
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
@@ -293,7 +292,7 @@ impl<'a, K, V, S> EntryMut<'a, K, V, S> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// #![feature(hash_raw_entry)]
   /// use hashmap_cuda::HashMap;
   ///
@@ -323,8 +322,7 @@ impl<'a, K, V, S> EntryMut<'a, K, V, S> {
   ///
   /// # Examples
   ///
-  /// ```
-  /// #![feature(hash_raw_entry)]
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
@@ -448,7 +446,7 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
@@ -463,13 +461,13 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
-  /// use hashmap_cuda::{ HashMap, RustcEntry };
+  /// ```ignore
+  /// use hashmap_cuda::{ HashMap, Entry };
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
   /// map.rustc_entry("poneyland").or_insert(12);
   ///
-  /// if let RustcEntry::Occupied(o) = map.rustc_entry("poneyland") {
+  /// if let Entry::Occupied(o) = map.rustc_entry("poneyland") {
   ///     // We delete the entry from the map.
   ///     o.remove_entry();
   /// }
@@ -487,14 +485,14 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
-  /// use hashmap_cuda::RustcEntry;
+  /// use hashmap_cuda::Entry;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
   /// map.rustc_entry("poneyland").or_insert(12);
   ///
-  /// if let RustcEntry::Occupied(o) = map.rustc_entry("poneyland") {
+  /// if let Entry::Occupied(o) = map.rustc_entry("poneyland") {
   ///     assert_eq!(o.get(), &12);
   /// }
   /// ```
@@ -506,25 +504,25 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// If you need a reference to the `OccupiedEntry`
   /// which may outlive the
-  /// destruction of the `RustcEntry` value, see [`into_mut`].
+  /// destruction of the `Entry` value, see [`into_mut`].
   ///
   /// [`into_mut`]: #method.into_mut
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
-  /// use hashmap_cuda::RustcEntry;
+  /// use hashmap_cuda::Entry;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
   /// map.rustc_entry("poneyland").or_insert(12);
   ///
   /// assert_eq!(map["poneyland"], 12);
-  /// if let RustcEntry::Occupied(mut o) = map.rustc_entry("poneyland") {
+  /// if let Entry::Occupied(mut o) = map.rustc_entry("poneyland") {
   ///     *o.get_mut() += 10;
   ///     assert_eq!(*o.get(), 22);
   ///
-  ///     // We can use the same RustcEntry multiple times.
+  ///     // We can use the same Entry multiple times.
   ///     *o.get_mut() += 2;
   /// }
   ///
@@ -545,15 +543,15 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
-  /// use hashmap_cuda::RustcEntry;
+  /// use hashmap_cuda::Entry;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
   /// map.rustc_entry("poneyland").or_insert(12);
   ///
   /// assert_eq!(map["poneyland"], 12);
-  /// if let RustcEntry::Occupied(o) = map.rustc_entry("poneyland") {
+  /// if let Entry::Occupied(o) = map.rustc_entry("poneyland") {
   ///     *o.into_mut() += 10;
   /// }
   ///
@@ -567,14 +565,14 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
-  /// use hashmap_cuda::RustcEntry;
+  /// use hashmap_cuda::Entry;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
   /// map.rustc_entry("poneyland").or_insert(12);
   ///
-  /// if let RustcEntry::Occupied(mut o) = map.rustc_entry("poneyland") {
+  /// if let Entry::Occupied(mut o) = map.rustc_entry("poneyland") {
   ///     assert_eq!(o.insert(15), 12);
   /// }
   ///
@@ -590,14 +588,14 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
-  /// use hashmap_cuda::RustcEntry;
+  /// use hashmap_cuda::Entry;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
   /// map.rustc_entry("poneyland").or_insert(12);
   ///
-  /// if let RustcEntry::Occupied(o) = map.rustc_entry("poneyland") {
+  /// if let Entry::Occupied(o) = map.rustc_entry("poneyland") {
   ///   assert_eq!(o.remove(), 12);
   /// }
   ///
@@ -613,8 +611,8 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
-  /// use hashmap_cuda::{ RustcEntry, HashMap };
+  /// ```ignore
+  /// use hashmap_cuda::{ Entry, HashMap };
   /// use std::rc::Rc;
   ///
   /// let mut map: HashMap<Rc<String>, u32> = HashMap::new();
@@ -622,7 +620,7 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// let my_key = Rc::new("Stringthing".to_string());
   ///
-  /// if let RustcEntry::Occupied(entry) = map.rustc_entry(my_key) {
+  /// if let Entry::Occupied(entry) = map.rustc_entry(my_key) {
   ///   // Also replace the key with a handle to our other key.
   ///   let (old_key, old_value): (Rc<String>, u32) = entry.replace_entry(16);
   /// }
@@ -640,8 +638,8 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
-  /// use hashmap_cuda::hash_map::{RustcEntry, HashMap};
+  /// ```ignore
+  /// use hashmap_cuda::hash_map::{Entry, HashMap};
   /// use std::rc::Rc;
   ///
   /// let mut map: HashMap<Rc<String>, u32> = HashMap::new();
@@ -653,7 +651,7 @@ impl<'a, K, V> OccupiedEntry<'a, K, V> {
   ///
   /// fn reclaim_memory(map: &mut HashMap<Rc<String>, u32>, known_strings: &[Rc<String>] ) {
   ///   for s in known_strings {
-  ///     if let RustcEntry::Occupied(entry) = map.rustc_entry(s.clone()) {
+  ///     if let Entry::Occupied(entry) = map.rustc_entry(s.clone()) {
   ///        // Replaces the entry's key with our version of it in `known_strings`.
   ///        entry.replace_key();
   ///     }
@@ -786,7 +784,7 @@ impl<K: Debug, V: Debug> Debug for OccupiedEntryMut<'_, K, V> {
 }
 
 /// A view into a vacant entry in a `HashMap`.
-/// It is part of the [`RustcEntry`] enum.
+/// It is part of the [`Entry`] enum.
 ///
 /// [`Entry`]: enum.Entry.html
 pub struct VacantEntry<'a, K, V> {
@@ -821,13 +819,13 @@ impl<'a, K, V> VacantEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
-  /// use hashmap_cuda::RustcEntry;
+  /// use hashmap_cuda::Entry;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
   ///
-  /// if let RustcEntry::Vacant(v) = map.rustc_entry("poneyland") {
+  /// if let Entry::Vacant(v) = map.rustc_entry("poneyland") {
   ///     v.into_key();
   /// }
   /// ```
@@ -840,13 +838,13 @@ impl<'a, K, V> VacantEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
+  /// ```ignore
   /// use hashmap_cuda::HashMap;
-  /// use hashmap_cuda::RustcEntry;
+  /// use hashmap_cuda::Entry;
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
   ///
-  /// if let RustcEntry::Vacant(o) = map.rustc_entry("poneyland") {
+  /// if let Entry::Vacant(o) = map.rustc_entry("poneyland") {
   ///   o.insert(37);
   /// }
   /// assert_eq!(map["poneyland"], 37);
@@ -862,12 +860,12 @@ impl<'a, K, V> VacantEntry<'a, K, V> {
   ///
   /// # Examples
   ///
-  /// ```
-  /// use hashmap_cuda::{ HashMap, RustcEntry };
+  /// ```ignore
+  /// use hashmap_cuda::{ HashMap, Entry };
   ///
   /// let mut map: HashMap<&str, u32> = HashMap::new();
   ///
-  /// if let RustcEntry::Vacant(v) = map.rustc_entry("poneyland") {
+  /// if let Entry::Vacant(v) = map.rustc_entry("poneyland") {
   ///   let o = v.insert_entry(37);
   ///   assert_eq!(o.get(), &37);
   /// }
